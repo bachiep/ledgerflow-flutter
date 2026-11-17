@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:ledgerflow_flutter/core/theme/theme_cubit.dart';
 import 'package:ledgerflow_flutter/core/widgets/state_widgets.dart';
+import 'package:ledgerflow_flutter/features/transactions/presentation/pages/ledger_page.dart';
 
 /// Route paths used across the application.
 final class AppRoutes {
@@ -26,11 +27,7 @@ GoRouter createAppRouter() {
             routes: [
               GoRoute(
                 path: AppRoutes.ledger,
-                builder: (context, state) => const _SectionPlaceholderPage(
-                  title: 'Ledger',
-                  icon: Icons.receipt_long_outlined,
-                  subtitle: 'Offline-first transaction stream will appear here.',
-                ),
+                builder: (context, state) => const LedgerPage(),
               ),
             ],
           ),
