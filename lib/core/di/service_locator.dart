@@ -4,6 +4,9 @@ import 'package:ledgerflow_flutter/core/database/app_database.dart';
 import 'package:ledgerflow_flutter/core/database/sample_data_seeder.dart';
 import 'package:ledgerflow_flutter/core/theme/theme_cubit.dart';
 import 'package:ledgerflow_flutter/core/time/clock.dart';
+import 'package:ledgerflow_flutter/features/analytics/data/drift_analytics_repository.dart';
+import 'package:ledgerflow_flutter/features/analytics/domain/analytics_repository.dart';
+import 'package:ledgerflow_flutter/features/analytics/presentation/cubit/analytics_cubit.dart';
 import 'package:ledgerflow_flutter/features/transactions/data/drift_transaction_repository.dart';
 import 'package:ledgerflow_flutter/features/transactions/domain/transaction_repository.dart';
 import 'package:ledgerflow_flutter/features/transactions/presentation/bloc/transaction_filter_cubit.dart';
@@ -48,6 +51,9 @@ Future<void> configureDependencies({
       clock: sl<AppClock>(),
     ),
   );
+  sl.registerLazySingleton<AnalyticsRepository>(
+    () => DriftAnalyticsRepository(sl<AppDatabase>()),
+  );
 
   sl.registerLazySingleton<ThemeCubit>(
     ThemeCubit.new,
@@ -70,6 +76,13 @@ Future<void> configureDependencies({
       transactionRepository: sl<TransactionRepository>(),
       walletRepository: sl<WalletRepository>(),
       filterCubit: sl<TransactionFilterCubit>(),
+    ),
+    dispose: (c) => c.close(),
+  );
+  sl.registerLazySingleton<AnalyticsCubit>(
+    () => AnalyticsCubit(
+      repository: sl<AnalyticsRepository>(),
+      clock: sl<AppClock>(),
     ),
     dispose: (c) => c.close(),
   );

@@ -31,10 +31,7 @@ void main() {
 
     await tester.tap(find.text('Analytics'));
     await tester.pumpAndSettle();
-    expect(
-      find.text('Monthly cashflow and budget alerts will appear here.'),
-      findsOneWidget,
-    );
+    expect(find.text('Go to Ledger'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Toggle theme'));
     await tester.pumpAndSettle();

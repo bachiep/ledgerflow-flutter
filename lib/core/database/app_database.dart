@@ -28,6 +28,46 @@ class WalletWithBalanceRow {
   final int currentBalanceMinor;
 }
 
+class MonthlySummarySqlRow {
+  const MonthlySummarySqlRow({
+    required this.totalIncomeMinor,
+    required this.totalExpenseMinor,
+    required this.transactionCount,
+  });
+
+  final int totalIncomeMinor;
+  final int totalExpenseMinor;
+  final int transactionCount;
+}
+
+class CategorySpendSqlRow {
+  const CategorySpendSqlRow({
+    required this.categoryId,
+    required this.categoryName,
+    required this.iconName,
+    required this.colorHex,
+    required this.monthlyBudgetMinor,
+    required this.spentMinor,
+  });
+
+  final String categoryId;
+  final String categoryName;
+  final String iconName;
+  final int colorHex;
+  final int monthlyBudgetMinor;
+  final int spentMinor;
+}
+
+class MonthlyAnalyticsSqlResult {
+  const MonthlyAnalyticsSqlResult({
+    required this.summary,
+    required this.categories,
+  });
+
+  final MonthlySummarySqlRow summary;
+  final List<CategorySpendSqlRow> categories;
+}
+
 @DriftDatabase(
   tables: [
     Wallets,
@@ -431,6 +471,77 @@ class AppDatabase extends _$AppDatabase {
       await delete(wallets).go();
       await delete(categories).go();
       await delete(syncMetadata).go();
+    });
+  }
+
+  Stream<MonthlyAnalyticsSqlResult> watchMonthlyAnalyticsSql({
+    required int fromEpochMs,
+    required int toEpochMs,
+  }) {
+    final variables = [
+      Variable.withInt(fromEpochMs),
+      Variable.withInt(toEpochMs),
+    ];
+
+    return customSelect(
+      '''
+      SELECT
+        COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount_minor ELSE 0 END), 0) AS total_income_minor,
+        COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount_minor ELSE 0 END), 0) AS total_expense_minor,
+        COUNT(*) AS tx_count
+      FROM transactions t
+      INNER JOIN wallets w ON w.id = t.wallet_id
+      WHERE t.deleted_at_epoch_ms IS NULL
+        AND w.deleted_at_epoch_ms IS NULL
+        AND t.occurred_at_epoch_ms >= ?
+        AND t.occurred_at_epoch_ms < ?
+      ''',
+      variables: variables,
+      readsFrom: {transactions, wallets, categories},
+    ).watchSingle().asyncMap((summaryRow) async {
+      final categoryRows = await customSelect(
+        '''
+        SELECT
+          c.id AS category_id,
+          c.name AS category_name,
+          c.icon_name AS icon_name,
+          c.color_hex AS color_hex,
+          c.monthly_budget_minor AS monthly_budget_minor,
+          COALESCE(SUM(t.amount_minor), 0) AS spent_minor
+        FROM transactions t
+        INNER JOIN categories c ON c.id = t.category_id
+        INNER JOIN wallets w ON w.id = t.wallet_id
+        WHERE t.deleted_at_epoch_ms IS NULL
+          AND w.deleted_at_epoch_ms IS NULL
+          AND t.type = 'expense'
+          AND t.occurred_at_epoch_ms >= ?
+          AND t.occurred_at_epoch_ms < ?
+        GROUP BY c.id
+        ORDER BY spent_minor DESC, c.name ASC
+        ''',
+        variables: variables,
+        readsFrom: {transactions, wallets, categories},
+      ).get();
+
+      return MonthlyAnalyticsSqlResult(
+        summary: MonthlySummarySqlRow(
+          totalIncomeMinor: summaryRow.read<int>('total_income_minor'),
+          totalExpenseMinor: summaryRow.read<int>('total_expense_minor'),
+          transactionCount: summaryRow.read<int>('tx_count'),
+        ),
+        categories: categoryRows
+            .map(
+              (row) => CategorySpendSqlRow(
+                categoryId: row.read<String>('category_id'),
+                categoryName: row.read<String>('category_name'),
+                iconName: row.read<String>('icon_name'),
+                colorHex: row.read<int>('color_hex'),
+                monthlyBudgetMinor: row.read<int>('monthly_budget_minor'),
+                spentMinor: row.read<int>('spent_minor'),
+              ),
+            )
+            .toList(growable: false),
+      );
     });
   }
 }
