@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:ledgerflow_flutter/core/theme/theme_cubit.dart';
 import 'package:ledgerflow_flutter/core/widgets/state_widgets.dart';
+import 'package:ledgerflow_flutter/features/analytics/presentation/pages/analytics_page.dart';
 import 'package:ledgerflow_flutter/features/transactions/presentation/pages/ledger_page.dart';
 
 /// Route paths used across the application.
@@ -35,10 +36,8 @@ GoRouter createAppRouter() {
             routes: [
               GoRoute(
                 path: AppRoutes.analytics,
-                builder: (context, state) => const _SectionPlaceholderPage(
-                  title: 'Analytics',
-                  icon: Icons.pie_chart_outline,
-                  subtitle: 'Monthly cashflow and budget alerts will appear here.',
+                builder: (context, state) => AnalyticsPage(
+                  onNavigateToLedger: () => context.go(AppRoutes.ledger),
                 ),
               ),
             ],
