@@ -22,6 +22,7 @@ import 'package:ledgerflow_flutter/features/sync/domain/remote_sync_data_source.
 import 'package:ledgerflow_flutter/features/sync/domain/sync_models.dart';
 import 'package:ledgerflow_flutter/features/sync/domain/sync_repository.dart';
 import 'package:ledgerflow_flutter/features/sync/presentation/bloc/sync_bloc.dart';
+import 'package:ledgerflow_flutter/features/transactions/presentation/bloc/transactions_cubit.dart';
 import 'package:mocktail/mocktail.dart';
 
 class _MockSyncRepository extends Mock implements SyncRepository {}
@@ -425,9 +426,14 @@ void main() {
 
         await tester.tap(find.byKey(const Key('guest_mode_button')));
         await tester.pump();
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 100)),
-        );
+        await tester.runAsync(() async {
+          for (var i = 0; i < 50; i++) {
+            await Future<void>.delayed(const Duration(milliseconds: 20));
+            if (sl<TransactionsCubit>().state is TransactionsLoaded) {
+              break;
+            }
+          }
+        });
         await tester.pumpAndSettle();
 
         expect(find.text('Total Balance'), findsOneWidget);
