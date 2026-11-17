@@ -1,13 +1,16 @@
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ledgerflow_flutter/app.dart';
 import 'package:ledgerflow_flutter/core/config/app_config.dart';
+import 'package:ledgerflow_flutter/core/database/app_database.dart';
 import 'package:ledgerflow_flutter/core/di/service_locator.dart';
 
 void main() {
   setUp(() async {
     await configureDependencies(
       config: const AppConfig(supabaseUrl: '', supabaseAnonKey: ''),
+      database: AppDatabase.forTesting(NativeDatabase.memory()),
     );
   });
 
