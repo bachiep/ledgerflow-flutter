@@ -6,6 +6,8 @@ import 'package:ledgerflow_flutter/core/router/app_router.dart';
 import 'package:ledgerflow_flutter/core/theme/app_theme.dart';
 import 'package:ledgerflow_flutter/core/theme/theme_cubit.dart';
 import 'package:ledgerflow_flutter/features/analytics/presentation/cubit/analytics_cubit.dart';
+import 'package:ledgerflow_flutter/features/auth/presentation/cubit/auth_cubit.dart';
+import 'package:ledgerflow_flutter/features/sync/presentation/bloc/sync_bloc.dart';
 import 'package:ledgerflow_flutter/features/transactions/presentation/bloc/transaction_filter_cubit.dart';
 import 'package:ledgerflow_flutter/features/transactions/presentation/bloc/transaction_search_bloc.dart';
 import 'package:ledgerflow_flutter/features/transactions/presentation/bloc/transactions_cubit.dart';
@@ -42,6 +44,8 @@ class _LedgerFlowAppState extends State<LedgerFlowApp> {
     return MultiBlocProvider(
       providers: [
         BlocProvider<ThemeCubit>.value(value: sl<ThemeCubit>()),
+        BlocProvider<AuthCubit>.value(value: sl<AuthCubit>()),
+        BlocProvider<SyncBloc>.value(value: sl<SyncBloc>()),
         BlocProvider<WalletsCubit>.value(value: sl<WalletsCubit>()),
         BlocProvider<TransactionFilterCubit>.value(
           value: sl<TransactionFilterCubit>(),

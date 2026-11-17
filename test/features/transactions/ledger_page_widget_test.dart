@@ -7,6 +7,8 @@ import 'package:ledgerflow_flutter/core/database/app_database.dart';
 import 'package:ledgerflow_flutter/core/database/sample_data_seeder.dart';
 import 'package:ledgerflow_flutter/core/di/service_locator.dart';
 import 'package:ledgerflow_flutter/core/time/clock.dart';
+import 'package:ledgerflow_flutter/features/auth/domain/app_session.dart';
+import 'package:ledgerflow_flutter/features/sync/data/connectivity_plus_network_connectivity.dart';
 
 void main() {
   late AppDatabase db;
@@ -15,13 +17,8 @@ void main() {
   setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     clock = FixedClock(DateTime.utc(2026, 11, 18, 9, 0));
-    await configureDependencies(
-      config: const AppConfig(supabaseUrl: '', supabaseAnonKey: ''),
-      clock: clock,
-      database: db,
-    );
 
-    final seeder = sl<SampleDataSeeder>();
+    final seeder = SampleDataSeeder(db, clock);
     await seeder.seedDefaultCategories();
     await db.upsertWalletAtomic(
       id: 'wallet-test',
@@ -32,10 +29,18 @@ void main() {
       updatedAtEpochMs: clock.nowUtc().millisecondsSinceEpoch,
       outboxId: 'outbox-wallet-test',
     );
+
+    await configureDependencies(
+      config: const AppConfig(supabaseUrl: '', supabaseAnonKey: ''),
+      clock: clock,
+      database: db,
+      connectivity: const AlwaysOnlineNetworkConnectivity(),
+      initialSession: const SessionGuest(),
+    );
   });
 
   tearDown(() async {
-    await sl.reset();
+    await disposeDependencies();
   });
 
   testWidgets('LedgerPage renders EmptyState and saves a new offline transaction', (
@@ -61,6 +66,9 @@ void main() {
       'Matcha latte',
     );
     await tester.tap(find.byKey(const Key('tx_submit_button')));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('Matcha latte'), findsOneWidget);

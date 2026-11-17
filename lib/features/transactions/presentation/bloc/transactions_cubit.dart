@@ -97,9 +97,14 @@ class TransactionsCubit extends Cubit<TransactionsState> {
   List<Wallet> _wallets = const [];
   List<CategoryItem> _categories = const [];
   List<TransactionEntry>? _transactions;
+  bool _walletsLoaded = false;
+  bool _categoriesLoaded = false;
 
   void start() {
     emit(const TransactionsLoading());
+    _walletsLoaded = false;
+    _categoriesLoaded = false;
+    _transactions = null;
     _filterSub?.cancel();
     _walletSub?.cancel();
     _categorySub?.cancel();
@@ -107,6 +112,7 @@ class TransactionsCubit extends Cubit<TransactionsState> {
     _walletSub = _walletRepository.watchWallets().listen(
       (wallets) {
         _wallets = wallets;
+        _walletsLoaded = true;
         _emitSnapshot();
       },
       onError: (Object error, StackTrace _) {
@@ -117,6 +123,7 @@ class TransactionsCubit extends Cubit<TransactionsState> {
     _categorySub = _transactionRepository.watchCategories().listen(
       (categories) {
         _categories = categories;
+        _categoriesLoaded = true;
         _emitSnapshot();
       },
       onError: (Object error, StackTrace _) {
@@ -143,7 +150,7 @@ class TransactionsCubit extends Cubit<TransactionsState> {
 
   void _emitSnapshot() {
     final txs = _transactions;
-    if (txs == null) {
+    if (txs == null || !_walletsLoaded || !_categoriesLoaded) {
       return;
     }
     if (txs.isEmpty) {

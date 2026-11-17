@@ -544,4 +544,87 @@ class AppDatabase extends _$AppDatabase {
       );
     });
   }
+
+  /// Merges remote delta records using deterministic Last-Write-Wins on `updatedAtEpochMs`.
+  Future<int> applyRemoteChangesLww({
+    required List<Map<String, Object?>> remoteWallets,
+    required List<Map<String, Object?>> remoteTransactions,
+  }) {
+    return transaction(() async {
+      var appliedCount = 0;
+
+      for (final raw in remoteWallets) {
+        final id = raw['id'] as String?;
+        final remoteUpdated = (raw['updated_at_epoch_ms'] as num?)?.toInt();
+        if (id == null || remoteUpdated == null) {
+          continue;
+        }
+        final existing = await (select(wallets)
+              ..where((w) => w.id.equals(id)))
+            .getSingleOrNull();
+        if (existing != null && existing.updatedAtEpochMs >= remoteUpdated) {
+          continue;
+        }
+
+        await into(wallets).insertOnConflictUpdate(
+          WalletsCompanion.insert(
+            id: id,
+            name: (raw['name'] as String?) ?? 'Wallet',
+            currency: Value((raw['currency'] as String?) ?? 'VND'),
+            initialBalanceMinor: Value(
+              (raw['initial_balance_minor'] as num?)?.toInt() ?? 0,
+            ),
+            isShared: Value((raw['is_shared'] as bool?) ?? false),
+            updatedAtEpochMs: remoteUpdated,
+            deletedAtEpochMs: Value(
+              (raw['deleted_at_epoch_ms'] as num?)?.toInt(),
+            ),
+            syncStatus: const Value('synced'),
+          ),
+        );
+        appliedCount++;
+      }
+
+      for (final raw in remoteTransactions) {
+        final id = raw['id'] as String?;
+        final walletId = raw['wallet_id'] as String?;
+        final categoryId = raw['category_id'] as String?;
+        final remoteUpdated = (raw['updated_at_epoch_ms'] as num?)?.toInt();
+        if (id == null ||
+            walletId == null ||
+            categoryId == null ||
+            remoteUpdated == null) {
+          continue;
+        }
+
+        final existing = await (select(transactions)
+              ..where((t) => t.id.equals(id)))
+            .getSingleOrNull();
+        if (existing != null && existing.updatedAtEpochMs >= remoteUpdated) {
+          continue;
+        }
+
+        await into(transactions).insertOnConflictUpdate(
+          TransactionsCompanion.insert(
+            id: id,
+            walletId: walletId,
+            categoryId: categoryId,
+            type: (raw['type'] as String?) ?? 'expense',
+            amountMinor: (raw['amount_minor'] as num?)?.toInt() ?? 0,
+            note: Value((raw['note'] as String?) ?? ''),
+            occurredAtEpochMs:
+                (raw['occurred_at_epoch_ms'] as num?)?.toInt() ?? remoteUpdated,
+            updatedAtEpochMs: remoteUpdated,
+            deletedAtEpochMs: Value(
+              (raw['deleted_at_epoch_ms'] as num?)?.toInt(),
+            ),
+            syncStatus: const Value('synced'),
+          ),
+        );
+        appliedCount++;
+      }
+
+      return appliedCount;
+    });
+  }
 }
