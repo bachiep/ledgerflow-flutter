@@ -5,6 +5,10 @@ import 'package:ledgerflow_flutter/core/di/service_locator.dart';
 import 'package:ledgerflow_flutter/core/router/app_router.dart';
 import 'package:ledgerflow_flutter/core/theme/app_theme.dart';
 import 'package:ledgerflow_flutter/core/theme/theme_cubit.dart';
+import 'package:ledgerflow_flutter/features/transactions/presentation/bloc/transaction_filter_cubit.dart';
+import 'package:ledgerflow_flutter/features/transactions/presentation/bloc/transaction_search_bloc.dart';
+import 'package:ledgerflow_flutter/features/transactions/presentation/bloc/transactions_cubit.dart';
+import 'package:ledgerflow_flutter/features/wallets/presentation/cubit/wallets_cubit.dart';
 
 class LedgerFlowApp extends StatefulWidget {
   const LedgerFlowApp({super.key, this.router});
@@ -34,8 +38,18 @@ class _LedgerFlowAppState extends State<LedgerFlowApp> {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider<ThemeCubit>.value(
-      value: sl<ThemeCubit>(),
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider<ThemeCubit>.value(value: sl<ThemeCubit>()),
+        BlocProvider<WalletsCubit>.value(value: sl<WalletsCubit>()),
+        BlocProvider<TransactionFilterCubit>.value(
+          value: sl<TransactionFilterCubit>(),
+        ),
+        BlocProvider<TransactionSearchBloc>.value(
+          value: sl<TransactionSearchBloc>(),
+        ),
+        BlocProvider<TransactionsCubit>.value(value: sl<TransactionsCubit>()),
+      ],
       child: BlocBuilder<ThemeCubit, ThemeMode>(
         builder: (context, themeMode) {
           return MaterialApp.router(
