@@ -5,17 +5,21 @@ import 'package:ledgerflow_flutter/app.dart';
 import 'package:ledgerflow_flutter/core/config/app_config.dart';
 import 'package:ledgerflow_flutter/core/database/app_database.dart';
 import 'package:ledgerflow_flutter/core/di/service_locator.dart';
+import 'package:ledgerflow_flutter/features/auth/domain/app_session.dart';
+import 'package:ledgerflow_flutter/features/sync/data/connectivity_plus_network_connectivity.dart';
 
 void main() {
   setUp(() async {
     await configureDependencies(
       config: const AppConfig(supabaseUrl: '', supabaseAnonKey: ''),
       database: AppDatabase.forTesting(NativeDatabase.memory()),
+      connectivity: const AlwaysOnlineNetworkConnectivity(),
+      initialSession: const SessionGuest(),
     );
   });
 
   tearDown(() async {
-    await sl.reset();
+    await disposeDependencies();
   });
 
   testWidgets('LedgerFlowApp boots with 3-tab shell and toggles theme', (
