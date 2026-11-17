@@ -4,13 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:ledgerflow_flutter/core/di/service_locator.dart';
+import 'package:ledgerflow_flutter/core/theme/app_theme.dart';
 import 'package:ledgerflow_flutter/core/theme/theme_cubit.dart';
-import 'package:ledgerflow_flutter/core/widgets/state_widgets.dart';
 import 'package:ledgerflow_flutter/features/analytics/presentation/pages/analytics_page.dart';
 import 'package:ledgerflow_flutter/features/auth/presentation/cubit/auth_cubit.dart';
 import 'package:ledgerflow_flutter/features/auth/presentation/pages/welcome_page.dart';
 import 'package:ledgerflow_flutter/features/sync/presentation/bloc/sync_bloc.dart';
+import 'package:ledgerflow_flutter/features/sync/presentation/widgets/sync_outbox_inspector_sheet.dart';
+import 'package:ledgerflow_flutter/features/transactions/presentation/bloc/transaction_filter_cubit.dart';
 import 'package:ledgerflow_flutter/features/transactions/presentation/pages/ledger_page.dart';
+import 'package:ledgerflow_flutter/features/wallets/presentation/pages/wallets_page.dart';
 
 /// Route paths used across the application.
 final class AppRoutes {
@@ -93,10 +96,13 @@ GoRouter createAppRouter({AuthCubit? authCubit}) {
             routes: [
               GoRoute(
                 path: AppRoutes.wallets,
-                builder: (context, state) => const _SectionPlaceholderPage(
-                  title: 'Wallets',
-                  icon: Icons.account_balance_wallet_outlined,
-                  subtitle: 'Personal and shared wallets will appear here.',
+                builder: (context, state) => WalletsPage(
+                  onWalletSelected: (wallet) {
+                    context
+                        .read<TransactionFilterCubit>()
+                        .selectWallet(wallet.id);
+                    context.go(AppRoutes.ledger);
+                  },
                 ),
               ),
             ],
@@ -114,6 +120,7 @@ class _HomeScaffoldShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.ledgerColors;
     return Scaffold(
       appBar: AppBar(
         title: const Text('LedgerFlow'),
@@ -135,16 +142,13 @@ class _HomeScaffoldShell extends StatelessWidget {
                     );
               return IconButton(
                 key: const Key('sync_status_button'),
-                tooltip: syncState.simulateOffline
-                    ? 'Offline simulation active (${syncState.pendingCount} pending)'
-                    : 'Sync (${syncState.pendingCount} pending)',
+                tooltip: 'Open Sync Outbox Inspector',
                 icon: Badge.count(
                   isLabelVisible: syncState.pendingCount > 0,
                   count: syncState.pendingCount,
                   child: icon,
                 ),
-                onPressed: () =>
-                    context.read<SyncBloc>().add(const SyncRequested()),
+                onPressed: () => SyncOutboxInspectorSheet.show(context),
               );
             },
           ),
@@ -164,7 +168,53 @@ class _HomeScaffoldShell extends StatelessWidget {
           ),
         ],
       ),
-      body: SafeArea(child: navigationShell),
+      body: SafeArea(
+        child: Column(
+          children: [
+            BlocBuilder<SyncBloc, SyncState>(
+              builder: (context, syncState) {
+                if (!syncState.simulateOffline) {
+                  return const SizedBox.shrink();
+                }
+                return Material(
+                  color: colors.warning.withValues(alpha: 0.16),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.cloud_off_outlined,
+                          size: 16,
+                          color: colors.warning,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Offline simulation active (${syncState.pendingCount} queued)',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () =>
+                              SyncOutboxInspectorSheet.show(context),
+                          child: const Text('Inspector'),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+            Expanded(child: navigationShell),
+          ],
+        ),
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: navigationShell.currentIndex,
         onDestinationSelected: (index) => navigationShell.goBranch(
@@ -189,27 +239,6 @@ class _HomeScaffoldShell extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _SectionPlaceholderPage extends StatelessWidget {
-  const _SectionPlaceholderPage({
-    required this.title,
-    required this.icon,
-    required this.subtitle,
-  });
-
-  final String title;
-  final IconData icon;
-  final String subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    return EmptyStateWidget(
-      icon: icon,
-      title: title,
-      subtitle: subtitle,
     );
   }
 }

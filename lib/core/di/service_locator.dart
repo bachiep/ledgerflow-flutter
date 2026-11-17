@@ -19,6 +19,7 @@ import 'package:ledgerflow_flutter/features/sync/domain/network_connectivity.dar
 import 'package:ledgerflow_flutter/features/sync/domain/remote_sync_data_source.dart';
 import 'package:ledgerflow_flutter/features/sync/domain/sync_repository.dart';
 import 'package:ledgerflow_flutter/features/sync/presentation/bloc/sync_bloc.dart';
+import 'package:ledgerflow_flutter/features/sync/presentation/bloc/sync_inspector_cubit.dart';
 import 'package:ledgerflow_flutter/features/transactions/data/drift_transaction_repository.dart';
 import 'package:ledgerflow_flutter/features/transactions/domain/transaction_repository.dart';
 import 'package:ledgerflow_flutter/features/transactions/presentation/bloc/transaction_filter_cubit.dart';
@@ -46,6 +47,7 @@ Future<void> disposeDependencies() async {
   await closeIfRegistered<TransactionSearchBloc>((b) => b.close());
   await closeIfRegistered<TransactionFilterCubit>((c) => c.close());
   await closeIfRegistered<WalletsCubit>((c) => c.close());
+  await closeIfRegistered<SyncInspectorCubit>((c) => c.close());
   await closeIfRegistered<SyncBloc>((b) => b.close());
   await closeIfRegistered<AuthCubit>((c) => c.close());
   await closeIfRegistered<ThemeCubit>((c) => c.close());
@@ -152,24 +154,27 @@ Future<void> configureDependencies({
       connectivity: sl<NetworkConnectivity>(),
     )..add(const SyncStarted()),
   );
+  sl.registerSingleton<SyncInspectorCubit>(
+    SyncInspectorCubit(sl<SyncRepository>()),
+  );
   sl.registerSingleton<WalletsCubit>(WalletsCubit(sl<WalletRepository>()));
   sl.registerSingleton<TransactionFilterCubit>(TransactionFilterCubit());
   sl.registerSingleton<TransactionSearchBloc>(TransactionSearchBloc());
-  sl.registerLazySingleton<TransactionsCubit>(
-    () => TransactionsCubit(
+  sl.registerSingleton<TransactionsCubit>(
+    TransactionsCubit(
       transactionRepository: sl<TransactionRepository>(),
       walletRepository: sl<WalletRepository>(),
       filterCubit: sl<TransactionFilterCubit>(),
     ),
   );
-  sl.registerLazySingleton<AnalyticsCubit>(
-    () => AnalyticsCubit(
+  sl.registerSingleton<AnalyticsCubit>(
+    AnalyticsCubit(
       repository: sl<AnalyticsRepository>(),
       clock: sl<AppClock>(),
     ),
   );
 
   if (database != null) {
-    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(const Duration(milliseconds: 30));
   }
 }

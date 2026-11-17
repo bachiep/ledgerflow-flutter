@@ -424,6 +424,7 @@ void main() {
         expect(find.byKey(const Key('guest_mode_button')), findsOneWidget);
 
         await tester.tap(find.byKey(const Key('guest_mode_button')));
+        await tester.pump();
         await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 100)),
         );

@@ -345,10 +345,20 @@ class _FilterBar extends StatelessWidget {
               children: [
                 ChoiceChip(
                   label: const Text('All'),
-                  selected: filter.type == null,
+                  selected: filter.type == null && filter.walletId == null,
                   onSelected: (_) =>
-                      context.read<TransactionFilterCubit>().selectType(null),
+                      context.read<TransactionFilterCubit>().clearAll(),
                 ),
+                if (filter.walletId != null) ...[
+                  const SizedBox(width: 6),
+                  InputChip(
+                    label: const Text('Wallet Filter'),
+                    selected: true,
+                    onDeleted: () => context
+                        .read<TransactionFilterCubit>()
+                        .selectWallet(null),
+                  ),
+                ],
                 const SizedBox(width: 6),
                 ChoiceChip(
                   label: const Text('Expense'),

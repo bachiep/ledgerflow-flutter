@@ -80,7 +80,13 @@ class MonthlyAnalyticsSqlResult {
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? openAppConnection());
 
-  AppDatabase.forTesting(super.executor);
+  AppDatabase.forTesting(QueryExecutor executor)
+      : super(
+          DatabaseConnection(
+            executor,
+            closeStreamsSynchronously: true,
+          ),
+        );
 
   @override
   int get schemaVersion => 1;
