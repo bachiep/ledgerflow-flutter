@@ -23,8 +23,14 @@ final class SampleDataSeeder {
   static const String catFreelanceId = '22222222-2222-4222-8222-222222222208';
 
   Future<void> seedDefaultCategories() async {
+    await _db.batch((batch) {
+      batch.insertAllOnConflictUpdate(_db.categories, _defaultCategories());
+    });
+  }
+
+  List<CategoriesCompanion> _defaultCategories() {
     final nowMs = _clock.nowUtc().millisecondsSinceEpoch;
-    final defaultCategories = [
+    return [
       CategoriesCompanion.insert(
         id: catFoodId,
         name: 'Food & Dining',
@@ -98,20 +104,19 @@ final class SampleDataSeeder {
         updatedAtEpochMs: nowMs,
       ),
     ];
-
-    await _db.batch((batch) {
-      batch.insertAllOnConflictUpdate(_db.categories, defaultCategories);
-    });
   }
 
   /// Seeds 30-day sample wallets and transactions if no transactions exist yet.
-  Future<void> seedGuestSampleIfEmpty() async {
-    await seedDefaultCategories();
+  Future<void> seedGuestSampleIfEmpty() {
+    return _db.transaction(() async {
+      await _db.batch((batch) {
+        batch.insertAllOnConflictUpdate(_db.categories, _defaultCategories());
+      });
 
-    final existingWallets = await _db.select(_db.wallets).get();
-    if (existingWallets.isNotEmpty) {
-      return;
-    }
+      final existingWallets = await _db.select(_db.wallets).get();
+      if (existingWallets.isNotEmpty) {
+        return;
+      }
 
     final now = _clock.nowUtc();
     final nowMs = now.millisecondsSinceEpoch;
@@ -296,7 +301,6 @@ final class SampleDataSeeder {
       ),
     ];
 
-    await _db.transaction(() async {
       await _db.batch((batch) {
         batch.insertAllOnConflictUpdate(_db.wallets, sampleWallets);
         batch.insertAllOnConflictUpdate(

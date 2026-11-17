@@ -66,6 +66,7 @@ void main() {
       'Matcha latte',
     );
     await tester.tap(find.byKey(const Key('tx_submit_button')));
+    await tester.pump();
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 50)),
     );
