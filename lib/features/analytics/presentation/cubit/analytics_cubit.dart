@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:ledgerflow_flutter/core/result/result.dart';
 import 'package:ledgerflow_flutter/core/time/clock.dart';
 import 'package:ledgerflow_flutter/features/analytics/domain/analytics_models.dart';
 import 'package:ledgerflow_flutter/features/analytics/domain/analytics_repository.dart';
+import 'package:ledgerflow_flutter/features/transactions/domain/transaction_models.dart';
 
 sealed class AnalyticsState extends Equatable {
   const AnalyticsState(this.month);
@@ -87,6 +89,20 @@ class AnalyticsCubit extends Cubit<AnalyticsState> {
 
   void retry() {
     _subscribe(_selectedMonth);
+  }
+
+  Future<Result<void>> updateCategoryBudget({
+    required String categoryId,
+    required int monthlyBudgetMinor,
+  }) {
+    return _repository.updateCategoryBudget(
+      categoryId: categoryId,
+      monthlyBudgetMinor: monthlyBudgetMinor,
+    );
+  }
+
+  Future<List<TransactionEntry>> loadMonthlyTransactions() {
+    return _repository.getMonthlyTransactions(_selectedMonth);
   }
 
   void _subscribe(DateTime month) {

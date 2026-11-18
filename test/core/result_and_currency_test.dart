@@ -57,6 +57,28 @@ void main() {
         isNull,
       );
     });
+
+    test('formatEditableInput preserves zero-decimal VND and 2-decimal USD values', () {
+      expect(
+        CurrencyFormatter.formatEditableInput(185000, currency: 'VND'),
+        '185000',
+      );
+      expect(
+        CurrencyFormatter.formatEditableInput(1250, currency: 'USD'),
+        '12.50',
+      );
+    });
+
+    test('formatCompactAxis formats K and M units cleanly', () {
+      expect(CurrencyFormatter.formatCompactAxis(0), '0');
+      expect(CurrencyFormatter.formatCompactAxis(540000), '540K');
+      expect(CurrencyFormatter.formatCompactAxis(14500000), '15M');
+      expect(CurrencyFormatter.formatCompactAxis(1500000), '1.5M');
+      expect(
+        CurrencyFormatter.formatCompactAxis(125000, currency: 'USD'),
+        r'$1.3K',
+      );
+    });
   });
 
   group('FixedClock', () {

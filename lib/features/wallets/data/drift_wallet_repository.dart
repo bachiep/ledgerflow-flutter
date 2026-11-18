@@ -22,7 +22,18 @@ class DriftWalletRepository implements WalletRepository {
 
   @override
   Stream<List<Wallet>> watchWallets() {
-    return _db.watchWalletsWithBalance().map(
+    final now = _clock.nowUtc();
+    final monthFrom =
+        DateTime.utc(now.year, now.month, 1).millisecondsSinceEpoch;
+    final monthTo =
+        DateTime.utc(now.year, now.month + 1, 1).millisecondsSinceEpoch;
+
+    return _db
+        .watchWalletsWithBalance(
+          monthFromEpochMs: monthFrom,
+          monthToEpochMs: monthTo,
+        )
+        .map(
           (rows) => rows
               .map(
                 (row) => Wallet(
@@ -37,6 +48,9 @@ class DriftWalletRepository implements WalletRepository {
                     isUtc: true,
                   ),
                   syncStatus: SyncStatus.fromStorage(row.wallet.syncStatus),
+                  monthlyInflowMinor: row.monthlyInflowMinor,
+                  monthlyOutflowMinor: row.monthlyOutflowMinor,
+                  monthlyTxCount: row.monthlyTxCount,
                 ),
               )
               .toList(growable: false),

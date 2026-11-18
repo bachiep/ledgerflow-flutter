@@ -11,6 +11,9 @@ class Wallet extends Equatable {
     required this.isShared,
     required this.updatedAt,
     required this.syncStatus,
+    this.monthlyInflowMinor = 0,
+    this.monthlyOutflowMinor = 0,
+    this.monthlyTxCount = 0,
   });
 
   final String id;
@@ -21,6 +24,11 @@ class Wallet extends Equatable {
   final bool isShared;
   final DateTime updatedAt;
   final SyncStatus syncStatus;
+  final int monthlyInflowMinor;
+  final int monthlyOutflowMinor;
+  final int monthlyTxCount;
+
+  int get monthlyNetDeltaMinor => monthlyInflowMinor - monthlyOutflowMinor;
 
   @override
   List<Object?> get props => [
@@ -32,5 +40,8 @@ class Wallet extends Equatable {
         isShared,
         updatedAt,
         syncStatus,
+        monthlyInflowMinor,
+        monthlyOutflowMinor,
+        monthlyTxCount,
       ];
 }

@@ -179,6 +179,11 @@ class TransactionsCubit extends Cubit<TransactionsState> {
     return result.isSuccess;
   }
 
+  Future<bool> restoreTransaction(String id) async {
+    final result = await _transactionRepository.restoreTransaction(id);
+    return result.isSuccess;
+  }
+
   @override
   Future<void> close() async {
     await _filterSub?.cancel();

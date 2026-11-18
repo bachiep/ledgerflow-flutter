@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
+import 'package:ledgerflow_flutter/core/theme/app_theme.dart';
 import 'package:ledgerflow_flutter/core/utils/currency_formatter.dart';
 import 'package:ledgerflow_flutter/features/transactions/domain/transaction_models.dart';
 import 'package:ledgerflow_flutter/features/transactions/domain/transaction_repository.dart';
 import 'package:ledgerflow_flutter/features/transactions/presentation/bloc/transaction_form_cubit.dart';
 import 'package:ledgerflow_flutter/features/transactions/presentation/widgets/category_icon_mapper.dart';
 import 'package:ledgerflow_flutter/features/wallets/domain/wallet.dart';
+
+enum TransactionFormAction {
+  saved,
+  deleted,
+}
 
 class TransactionFormSheet extends StatelessWidget {
   const TransactionFormSheet({
@@ -24,7 +30,7 @@ class TransactionFormSheet extends StatelessWidget {
   final TransactionEntry? initialTransaction;
   final DateTime? initialDate;
 
-  static Future<bool?> show(
+  static Future<TransactionFormAction?> show(
     BuildContext context, {
     required TransactionRepository transactionRepository,
     required List<Wallet> wallets,
@@ -32,7 +38,7 @@ class TransactionFormSheet extends StatelessWidget {
     TransactionEntry? initialTransaction,
     DateTime? initialDate,
   }) {
-    return showModalBottomSheet<bool>(
+    return showModalBottomSheet<TransactionFormAction>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -106,7 +112,12 @@ class _TransactionFormBodyState extends State<_TransactionFormBody> {
         (matchingCategories.isNotEmpty ? matchingCategories.first.id : '');
 
     _amountController = TextEditingController(
-      text: editing != null ? editing.amountMinor.toString() : '',
+      text: editing != null
+          ? CurrencyFormatter.formatEditableInput(
+              editing.amountMinor,
+              currency: editing.walletCurrency,
+            )
+          : '',
     );
     _noteController = TextEditingController(text: editing?.note ?? '');
   }
@@ -165,7 +176,7 @@ class _TransactionFormBodyState extends State<_TransactionFormBody> {
       return;
     }
     result.fold(
-      onSuccess: (_) => Navigator.of(context).pop(true),
+      onSuccess: (_) => Navigator.of(context).pop(TransactionFormAction.deleted),
       onFailure: (failure) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(failure.message)),
@@ -204,13 +215,14 @@ class _TransactionFormBodyState extends State<_TransactionFormBody> {
     final filteredCategories = _categoriesForType(_type);
     final currency = _selectedWallet?.currency ?? 'VND';
     final isEditing = widget.initialTransaction != null;
+    final theme = Theme.of(context);
 
     return SafeArea(
       top: false,
       child: BlocConsumer<TransactionFormCubit, TransactionFormState>(
         listener: (context, state) {
           if (state is TransactionFormSuccess) {
-            Navigator.of(context).pop(true);
+            Navigator.of(context).pop(TransactionFormAction.saved);
           } else if (state is TransactionFormFailure) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text(state.message)),
@@ -237,10 +249,9 @@ class _TransactionFormBodyState extends State<_TransactionFormBody> {
                       Expanded(
                         child: Text(
                           isEditing ? 'Edit Transaction' : 'New Transaction',
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleLarge
-                              ?.copyWith(fontWeight: FontWeight.w600),
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                       if (isEditing)
@@ -249,7 +260,7 @@ class _TransactionFormBodyState extends State<_TransactionFormBody> {
                           tooltip: 'Delete transaction',
                           icon: Icon(
                             Icons.delete_outline,
-                            color: Theme.of(context).colorScheme.error,
+                            color: theme.colorScheme.error,
                           ),
                           onPressed: isSubmitting ? null : _deleteEditing,
                         ),
@@ -258,7 +269,7 @@ class _TransactionFormBodyState extends State<_TransactionFormBody> {
                         icon: const Icon(Icons.close),
                         onPressed: isSubmitting
                             ? null
-                            : () => Navigator.of(context).pop(false),
+                            : () => Navigator.of(context).pop(),
                       ),
                     ],
                   ),
@@ -274,12 +285,12 @@ class _TransactionFormBodyState extends State<_TransactionFormBody> {
                               ButtonSegment(
                                 value: TransactionType.expense,
                                 label: Text('Expense'),
-                                icon: Icon(Icons.arrow_upward),
+                                icon: Icon(Icons.north_east, size: 18),
                               ),
                               ButtonSegment(
                                 value: TransactionType.income,
                                 label: Text('Income'),
-                                icon: Icon(Icons.arrow_downward),
+                                icon: Icon(Icons.south_west, size: 18),
                               ),
                             ],
                             selected: {_type},
@@ -301,6 +312,9 @@ class _TransactionFormBodyState extends State<_TransactionFormBody> {
                           TextFormField(
                             key: const Key('tx_amount_field'),
                             controller: _amountController,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ).tabular,
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
                             ),
@@ -440,7 +454,10 @@ class _TransactionFormBodyState extends State<_TransactionFormBody> {
                         ? const SizedBox(
                             height: 20,
                             width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
                         : Text(isEditing ? 'Save Changes' : 'Save Transaction'),
                   ),

@@ -51,47 +51,10 @@ class WalletsPage extends StatelessWidget {
                 onAction: () => _openCreateWalletSheet(context),
               ),
             WalletsLoaded(:final wallets, :final totalBalanceMinor) =>
-              ListView(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 88),
-                children: [
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Net Balance Across Wallets',
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelMedium
-                                ?.copyWith(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
-                                ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            CurrencyFormatter.format(totalBalanceMinor),
-                            style: Theme.of(context)
-                                .textTheme
-                                .headlineSmall
-                                ?.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  for (final wallet in wallets)
-                    _WalletCard(
-                      wallet: wallet,
-                      onTap: onWalletSelected != null
-                          ? () => onWalletSelected!(wallet)
-                          : null,
-                    ),
-                ],
+              _WalletsLoadedView(
+                wallets: wallets,
+                totalBalanceMinor: totalBalanceMinor,
+                onWalletSelected: onWalletSelected,
               ),
           };
         },
@@ -106,8 +69,198 @@ class WalletsPage extends StatelessWidget {
   }
 }
 
+class _WalletsLoadedView extends StatelessWidget {
+  const _WalletsLoadedView({
+    required this.wallets,
+    required this.totalBalanceMinor,
+    this.onWalletSelected,
+  });
+
+  final List<Wallet> wallets;
+  final int totalBalanceMinor;
+  final ValueChanged<Wallet>? onWalletSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = context.ledgerColors;
+    final totalInflow = wallets.fold<int>(
+      0,
+      (sum, w) => sum + w.monthlyInflowMinor,
+    );
+    final totalOutflow = wallets.fold<int>(
+      0,
+      (sum, w) => sum + w.monthlyOutflowMinor,
+    );
+    final totalTxCount = wallets.fold<int>(
+      0,
+      (sum, w) => sum + w.monthlyTxCount,
+    );
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Net Balance Across Wallets',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: colors.surfaceSubtle,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: colors.border),
+                      ),
+                      child: Text(
+                        '${wallets.length} wallets • $totalTxCount txns',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ).tabular,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    CurrencyFormatter.format(totalBalanceMinor),
+                    maxLines: 1,
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.4,
+                    ).tabular,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _SummaryMetricChip(
+                        icon: Icons.south_west,
+                        label: 'Month Inflow',
+                        value: CurrencyFormatter.format(
+                          totalInflow,
+                          showPlusSign: true,
+                        ),
+                        color: colors.income,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _SummaryMetricChip(
+                        icon: Icons.north_east,
+                        label: 'Month Outflow',
+                        value: CurrencyFormatter.format(
+                          totalOutflow,
+                          forceNegative: totalOutflow > 0,
+                        ),
+                        color: colors.expense,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        for (final wallet in wallets)
+          _WalletCard(
+            key: ValueKey('wallet_card_${wallet.id}'),
+            wallet: wallet,
+            onTap: onWalletSelected != null
+                ? () => onWalletSelected!(wallet)
+                : null,
+          ),
+      ],
+    );
+  }
+}
+
+class _SummaryMetricChip extends StatelessWidget {
+  const _SummaryMetricChip({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 13, color: color),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              maxLines: 1,
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w700,
+              ).tabular,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _WalletCard extends StatelessWidget {
   const _WalletCard({
+    super.key,
     required this.wallet,
     this.onTap,
   });
@@ -125,91 +278,134 @@ class _WalletCard extends StatelessWidget {
       SyncStatus.failed => ('FAILED', colors.failed),
     };
 
+    final netDelta = wallet.monthlyNetDeltaMinor;
+    final netColor = netDelta > 0
+        ? colors.income
+        : netDelta < 0
+            ? colors.expense
+            : theme.colorScheme.onSurfaceVariant;
+    final txLabel = wallet.monthlyTxCount == 1 ? '1 txn' : '${wallet.monthlyTxCount} txns';
+
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(14),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              CircleAvatar(
-                backgroundColor: wallet.isShared
-                    ? theme.colorScheme.secondaryContainer
-                    : theme.colorScheme.primaryContainer,
-                child: Icon(
-                  wallet.isShared
-                      ? Icons.groups_outlined
-                      : Icons.account_balance_wallet_outlined,
-                  color: wallet.isShared
-                      ? theme.colorScheme.onSecondaryContainer
-                      : theme.colorScheme.onPrimaryContainer,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            wallet.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        if (wallet.isShared) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.secondaryContainer,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              'Shared',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: theme.colorScheme.onSecondaryContainer,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Initial: ${CurrencyFormatter.format(wallet.initialBalanceMinor, currency: wallet.currency)}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
+              Row(
                 children: [
-                  Text(
-                    CurrencyFormatter.format(
-                      wallet.currentBalanceMinor,
-                      currency: wallet.currency,
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: wallet.isShared
+                          ? theme.colorScheme.secondaryContainer
+                          : theme.colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
+                    child: Icon(
+                      wallet.isShared
+                          ? Icons.groups_outlined
+                          : Icons.account_balance_wallet_outlined,
+                      size: 20,
+                      color: wallet.isShared
+                          ? theme.colorScheme.onSecondaryContainer
+                          : theme.colorScheme.onPrimaryContainer,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          wallet.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Initial: ${CurrencyFormatter.format(wallet.initialBalanceMinor, currency: wallet.currency)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ).tabular,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        CurrencyFormatter.format(
+                          wallet.currentBalanceMinor,
+                          currency: wallet.currency,
+                        ),
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ).tabular,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: wallet.isShared
+                          ? theme.colorScheme.primaryContainer
+                          : colors.surfaceSubtle,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: wallet.isShared
+                            ? theme.colorScheme.primary.withValues(alpha: 0.3)
+                            : colors.border,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          wallet.isShared
+                              ? Icons.groups_outlined
+                              : Icons.person_outline,
+                          size: 12,
+                          color: wallet.isShared
+                              ? theme.colorScheme.onPrimaryContainer
+                              : theme.colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          wallet.isShared ? 'Shared' : 'Personal',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: wallet.isShared
+                                ? theme.colorScheme.onPrimaryContainer
+                                : theme.colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 6,
@@ -230,10 +426,143 @@ class _WalletCard extends StatelessWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: colors.surfaceSubtle,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: colors.border),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _WalletFlowCell(
+                        label: 'Inflow',
+                        value: CurrencyFormatter.format(
+                          wallet.monthlyInflowMinor,
+                          currency: wallet.currency,
+                          showPlusSign: wallet.monthlyInflowMinor > 0,
+                        ),
+                        color: colors.income,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _WalletFlowCell(
+                        label: 'Outflow',
+                        value: CurrencyFormatter.format(
+                          wallet.monthlyOutflowMinor,
+                          currency: wallet.currency,
+                          forceNegative: wallet.monthlyOutflowMinor > 0,
+                        ),
+                        color: colors.expense,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _WalletFlowCell(
+                        label: 'Net Delta',
+                        value: CurrencyFormatter.format(
+                          netDelta,
+                          currency: wallet.currency,
+                          showPlusSign: netDelta > 0,
+                        ),
+                        color: netColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Icon(
+                    Icons.receipt_long_outlined,
+                    size: 14,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      '$txLabel this month',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ).tabular,
+                    ),
+                  ),
+                  if (onTap != null)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'View Ledger',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(width: 3),
+                        Icon(
+                          Icons.arrow_forward,
+                          size: 14,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ],
+                    ),
+                ],
+              ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _WalletFlowCell extends StatelessWidget {
+  const _WalletFlowCell({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 2),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            value,
+            maxLines: 1,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w700,
+            ).tabular,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -312,7 +641,7 @@ class _CreateWalletSheetState extends State<_CreateWalletSheet> {
                       style: Theme.of(context)
                           .textTheme
                           .titleLarge
-                          ?.copyWith(fontWeight: FontWeight.w600),
+                          ?.copyWith(fontWeight: FontWeight.w700),
                     ),
                   ),
                   IconButton(

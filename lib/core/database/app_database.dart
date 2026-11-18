@@ -22,10 +22,16 @@ class WalletWithBalanceRow {
   const WalletWithBalanceRow({
     required this.wallet,
     required this.currentBalanceMinor,
+    this.monthlyInflowMinor = 0,
+    this.monthlyOutflowMinor = 0,
+    this.monthlyTxCount = 0,
   });
 
   final WalletRow wallet;
   final int currentBalanceMinor;
+  final int monthlyInflowMinor;
+  final int monthlyOutflowMinor;
+  final int monthlyTxCount;
 }
 
 class MonthlySummarySqlRow {
@@ -58,14 +64,28 @@ class CategorySpendSqlRow {
   final int spentMinor;
 }
 
+class MonthlyTrendSqlRow {
+  const MonthlyTrendSqlRow({
+    required this.yearMonth,
+    required this.incomeMinor,
+    required this.expenseMinor,
+  });
+
+  final String yearMonth;
+  final int incomeMinor;
+  final int expenseMinor;
+}
+
 class MonthlyAnalyticsSqlResult {
   const MonthlyAnalyticsSqlResult({
     required this.summary,
     required this.categories,
+    this.sixMonthTrend = const [],
   });
 
   final MonthlySummarySqlRow summary;
   final List<CategorySpendSqlRow> categories;
+  final List<MonthlyTrendSqlRow> sixMonthTrend;
 }
 
 @DriftDatabase(
@@ -262,6 +282,72 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  /// Atomically restores a soft-deleted transaction and enqueues an upsert outbox row.
+  Future<bool> restoreTransactionAtomic({
+    required String transactionId,
+    required int updatedAtEpochMs,
+    required String outboxId,
+  }) {
+    return transaction(() async {
+      final existing = await (select(transactions)
+            ..where((t) => t.id.equals(transactionId)))
+          .getSingleOrNull();
+      if (existing == null || existing.deletedAtEpochMs == null) {
+        return false;
+      }
+
+      await (update(transactions)..where((t) => t.id.equals(transactionId)))
+          .write(
+        TransactionsCompanion(
+          deletedAtEpochMs: const Value(null),
+          updatedAtEpochMs: Value(updatedAtEpochMs),
+          syncStatus: const Value('pending'),
+        ),
+      );
+
+      final payload = jsonEncode({
+        'id': existing.id,
+        'wallet_id': existing.walletId,
+        'category_id': existing.categoryId,
+        'type': existing.type,
+        'amount_minor': existing.amountMinor,
+        'note': existing.note,
+        'occurred_at_epoch_ms': existing.occurredAtEpochMs,
+        'updated_at_epoch_ms': updatedAtEpochMs,
+        'deleted_at_epoch_ms': null,
+      });
+
+      await into(syncOutbox).insert(
+        SyncOutboxCompanion.insert(
+          id: outboxId,
+          entityType: 'transaction',
+          entityId: transactionId,
+          operation: 'upsert',
+          payloadJson: payload,
+          createdAtEpochMs: updatedAtEpochMs,
+        ),
+      );
+      return true;
+    });
+  }
+
+  /// Updates a category's monthly budget limit in minor units (`0` clears the cap).
+  Future<bool> updateCategoryBudget({
+    required String categoryId,
+    required int monthlyBudgetMinor,
+    required int updatedAtEpochMs,
+  }) async {
+    final affected = await (update(categories)
+          ..where((c) => c.id.equals(categoryId)))
+        .write(
+      CategoriesCompanion(
+        monthlyBudgetMinor: Value(monthlyBudgetMinor),
+        updatedAtEpochMs: Value(updatedAtEpochMs),
+      ),
+    );
+    return affected > 0;
+  }
+
   Stream<List<TransactionJoinedRow>> watchActiveTransactions({
     String? walletId,
     String? categoryId,
@@ -322,7 +408,16 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
-  Stream<List<WalletWithBalanceRow>> watchWalletsWithBalance() {
+  Stream<List<WalletWithBalanceRow>> watchWalletsWithBalance({
+    int? monthFromEpochMs,
+    int? monthToEpochMs,
+  }) {
+    final nowUtc = DateTime.now().toUtc();
+    final resolvedFrom = monthFromEpochMs ??
+        DateTime.utc(nowUtc.year, nowUtc.month, 1).millisecondsSinceEpoch;
+    final resolvedTo = monthToEpochMs ??
+        DateTime.utc(nowUtc.year, nowUtc.month + 1, 1).millisecondsSinceEpoch;
+
     return customSelect(
       '''
       SELECT
@@ -340,13 +435,50 @@ class AppDatabase extends _$AppDatabase {
             WHEN t.deleted_at_epoch_ms IS NULL AND t.type = 'expense' THEN -t.amount_minor
             ELSE 0
           END
-        ), 0) AS current_balance_minor
+        ), 0) AS current_balance_minor,
+        COALESCE(SUM(
+          CASE
+            WHEN t.deleted_at_epoch_ms IS NULL
+              AND t.type = 'income'
+              AND t.occurred_at_epoch_ms >= ?
+              AND t.occurred_at_epoch_ms < ?
+            THEN t.amount_minor
+            ELSE 0
+          END
+        ), 0) AS monthly_inflow_minor,
+        COALESCE(SUM(
+          CASE
+            WHEN t.deleted_at_epoch_ms IS NULL
+              AND t.type = 'expense'
+              AND t.occurred_at_epoch_ms >= ?
+              AND t.occurred_at_epoch_ms < ?
+            THEN t.amount_minor
+            ELSE 0
+          END
+        ), 0) AS monthly_outflow_minor,
+        COALESCE(SUM(
+          CASE
+            WHEN t.deleted_at_epoch_ms IS NULL
+              AND t.occurred_at_epoch_ms >= ?
+              AND t.occurred_at_epoch_ms < ?
+            THEN 1
+            ELSE 0
+          END
+        ), 0) AS monthly_tx_count
       FROM wallets w
       LEFT JOIN transactions t ON t.wallet_id = w.id
       WHERE w.deleted_at_epoch_ms IS NULL
       GROUP BY w.id
       ORDER BY w.is_shared ASC, w.name ASC
       ''',
+      variables: [
+        Variable.withInt(resolvedFrom),
+        Variable.withInt(resolvedTo),
+        Variable.withInt(resolvedFrom),
+        Variable.withInt(resolvedTo),
+        Variable.withInt(resolvedFrom),
+        Variable.withInt(resolvedTo),
+      ],
       readsFrom: {wallets, transactions},
     ).watch().map((rows) {
       return rows.map((row) {
@@ -363,6 +495,9 @@ class AppDatabase extends _$AppDatabase {
         return WalletWithBalanceRow(
           wallet: wallet,
           currentBalanceMinor: row.read<int>('current_balance_minor'),
+          monthlyInflowMinor: row.read<int>('monthly_inflow_minor'),
+          monthlyOutflowMinor: row.read<int>('monthly_outflow_minor'),
+          monthlyTxCount: row.read<int>('monthly_tx_count'),
         );
       }).toList(growable: false);
     });
@@ -483,11 +618,16 @@ class AppDatabase extends _$AppDatabase {
   Stream<MonthlyAnalyticsSqlResult> watchMonthlyAnalyticsSql({
     required int fromEpochMs,
     required int toEpochMs,
+    int? trendFromEpochMs,
   }) {
-    final variables = [
+    final monthVariables = [
       Variable.withInt(fromEpochMs),
       Variable.withInt(toEpochMs),
     ];
+    final fromDate = DateTime.fromMillisecondsSinceEpoch(fromEpochMs, isUtc: true);
+    final resolvedTrendFrom = trendFromEpochMs ??
+        DateTime.utc(fromDate.year, fromDate.month - 5, 1)
+            .millisecondsSinceEpoch;
 
     return customSelect(
       '''
@@ -502,7 +642,7 @@ class AppDatabase extends _$AppDatabase {
         AND t.occurred_at_epoch_ms >= ?
         AND t.occurred_at_epoch_ms < ?
       ''',
-      variables: variables,
+      variables: monthVariables,
       readsFrom: {transactions, wallets, categories},
     ).watchSingle().asyncMap((summaryRow) async {
       final categoryRows = await customSelect(
@@ -525,7 +665,29 @@ class AppDatabase extends _$AppDatabase {
         GROUP BY c.id
         ORDER BY spent_minor DESC, c.name ASC
         ''',
-        variables: variables,
+        variables: monthVariables,
+        readsFrom: {transactions, wallets, categories},
+      ).get();
+
+      final trendRows = await customSelect(
+        '''
+        SELECT
+          strftime('%Y-%m', t.occurred_at_epoch_ms / 1000, 'unixepoch') AS ym,
+          COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount_minor ELSE 0 END), 0) AS income_minor,
+          COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount_minor ELSE 0 END), 0) AS expense_minor
+        FROM transactions t
+        INNER JOIN wallets w ON w.id = t.wallet_id
+        WHERE t.deleted_at_epoch_ms IS NULL
+          AND w.deleted_at_epoch_ms IS NULL
+          AND t.occurred_at_epoch_ms >= ?
+          AND t.occurred_at_epoch_ms < ?
+        GROUP BY ym
+        ORDER BY ym ASC
+        ''',
+        variables: [
+          Variable.withInt(resolvedTrendFrom),
+          Variable.withInt(toEpochMs),
+        ],
         readsFrom: {transactions, wallets, categories},
       ).get();
 
@@ -544,6 +706,15 @@ class AppDatabase extends _$AppDatabase {
                 colorHex: row.read<int>('color_hex'),
                 monthlyBudgetMinor: row.read<int>('monthly_budget_minor'),
                 spentMinor: row.read<int>('spent_minor'),
+              ),
+            )
+            .toList(growable: false),
+        sixMonthTrend: trendRows
+            .map(
+              (row) => MonthlyTrendSqlRow(
+                yearMonth: row.read<String>('ym'),
+                incomeMinor: row.read<int>('income_minor'),
+                expenseMinor: row.read<int>('expense_minor'),
               ),
             )
             .toList(growable: false),

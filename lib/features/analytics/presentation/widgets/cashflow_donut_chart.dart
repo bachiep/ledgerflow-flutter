@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:ledgerflow_flutter/core/theme/app_theme.dart';
 import 'package:ledgerflow_flutter/core/utils/currency_formatter.dart';
 import 'package:ledgerflow_flutter/features/analytics/domain/analytics_models.dart';
 
@@ -26,7 +27,7 @@ class CashflowDonutChart extends StatelessWidget {
             Text(
               'Expense Breakdown',
               style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: 16),
@@ -62,7 +63,7 @@ class CashflowDonutChart extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: theme.textTheme.titleSmall?.copyWith(
                               fontWeight: FontWeight.w700,
-                            ),
+                            ).tabular,
                           ),
                         ],
                       ),
@@ -89,9 +90,13 @@ class CashflowDonutChart extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 6),
-                      Text(
-                        '${item.categoryName} (${(item.shareRatio * 100).round()}%)',
-                        style: theme.textTheme.bodySmall,
+                      Flexible(
+                        child: Text(
+                          '${item.categoryName} (${(item.shareRatio * 100).round()}%)',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall,
+                        ),
                       ),
                     ],
                   ),

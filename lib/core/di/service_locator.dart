@@ -142,7 +142,10 @@ Future<void> configureDependencies({
     ),
   );
   sl.registerSingleton<AnalyticsRepository>(
-    DriftAnalyticsRepository(sl<AppDatabase>()),
+    DriftAnalyticsRepository(
+      sl<AppDatabase>(),
+      clock: sl<AppClock>(),
+    ),
   );
 
   sl.registerSingleton<ThemeCubit>(ThemeCubit());

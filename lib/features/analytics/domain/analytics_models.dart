@@ -31,6 +31,23 @@ class MonthlySummary extends Equatable {
       ];
 }
 
+class MonthlyCashflowPoint extends Equatable {
+  const MonthlyCashflowPoint({
+    required this.month,
+    required this.incomeMinor,
+    required this.expenseMinor,
+  });
+
+  final DateTime month;
+  final int incomeMinor;
+  final int expenseMinor;
+
+  int get netMinor => incomeMinor - expenseMinor;
+
+  @override
+  List<Object?> get props => [month, incomeMinor, expenseMinor];
+}
+
 class CategorySpend extends Equatable {
   const CategorySpend({
     required this.categoryId,
@@ -84,13 +101,15 @@ class MonthlyAnalyticsSnapshot extends Equatable {
   const MonthlyAnalyticsSnapshot({
     required this.summary,
     required this.categorySpends,
+    this.sixMonthTrend = const [],
   });
 
   final MonthlySummary summary;
   final List<CategorySpend> categorySpends;
+  final List<MonthlyCashflowPoint> sixMonthTrend;
 
   bool get isEmpty => summary.transactionCount == 0;
 
   @override
-  List<Object?> get props => [summary, categorySpends];
+  List<Object?> get props => [summary, categorySpends, sixMonthTrend];
 }

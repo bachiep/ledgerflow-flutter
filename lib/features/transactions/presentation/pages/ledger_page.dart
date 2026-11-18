@@ -5,6 +5,7 @@ import 'package:ledgerflow_flutter/core/database/sample_data_seeder.dart';
 import 'package:ledgerflow_flutter/core/di/service_locator.dart';
 import 'package:ledgerflow_flutter/core/models/sync_status.dart';
 import 'package:ledgerflow_flutter/core/theme/app_theme.dart';
+import 'package:ledgerflow_flutter/core/time/clock.dart';
 import 'package:ledgerflow_flutter/core/utils/currency_formatter.dart';
 import 'package:ledgerflow_flutter/core/widgets/state_widgets.dart';
 import 'package:ledgerflow_flutter/features/transactions/domain/transaction_models.dart';
@@ -20,16 +21,50 @@ class LedgerPage extends StatefulWidget {
   const LedgerPage({
     super.key,
     this.onRefreshSync,
+    this.clock,
   });
 
   final Future<void> Function()? onRefreshSync;
+  final AppClock? clock;
 
   @override
   State<LedgerPage> createState() => _LedgerPageState();
 }
 
+sealed class _LedgerListItem {
+  const _LedgerListItem();
+}
+
+final class _DayHeaderItem extends _LedgerListItem {
+  const _DayHeaderItem({
+    required this.dayLocal,
+    required this.label,
+    required this.incomeMinor,
+    required this.expenseMinor,
+    required this.txCount,
+  });
+
+  final DateTime dayLocal;
+  final String label;
+  final int incomeMinor;
+  final int expenseMinor;
+  final int txCount;
+
+  int get netMinor => incomeMinor - expenseMinor;
+}
+
+final class _TransactionRowItem extends _LedgerListItem {
+  const _TransactionRowItem(this.entry);
+
+  final TransactionEntry entry;
+}
+
 class _LedgerPageState extends State<LedgerPage> {
   final TextEditingController _searchController = TextEditingController();
+
+  AppClock get _resolvedClock =>
+      widget.clock ??
+      (sl.isRegistered<AppClock>() ? sl<AppClock>() : const SystemClock());
 
   @override
   void dispose() {
@@ -48,12 +83,53 @@ class _LedgerPageState extends State<LedgerPage> {
       return;
     }
 
-    await TransactionFormSheet.show(
+    final action = await TransactionFormSheet.show(
       context,
       transactionRepository: sl<TransactionRepository>(),
       wallets: wallets,
       categories: categories,
       initialTransaction: editing,
+    );
+    if (action == TransactionFormAction.deleted &&
+        editing != null &&
+        context.mounted) {
+      _showUndoSnackBar(context, editing);
+    }
+  }
+
+  Future<void> _deleteWithUndo(
+    BuildContext context,
+    TransactionEntry entry,
+  ) async {
+    final cubit = context.read<TransactionsCubit>();
+    final ok = await cubit.deleteTransaction(entry.id);
+    if (!ok || !context.mounted) {
+      return;
+    }
+    _showUndoSnackBar(context, entry);
+  }
+
+  void _showUndoSnackBar(BuildContext context, TransactionEntry entry) {
+    final messenger = ScaffoldMessenger.of(context);
+    final cubit = context.read<TransactionsCubit>();
+    final label = entry.note.isNotEmpty ? entry.note : entry.categoryName;
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        key: const Key('undo_delete_snackbar'),
+        duration: const Duration(seconds: 5),
+        content: Text(
+          'Deleted "$label"',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        action: SnackBarAction(
+          label: 'UNDO',
+          onPressed: () {
+            cubit.restoreTransaction(entry.id);
+          },
+        ),
+      ),
     );
   }
 
@@ -63,6 +139,61 @@ class _LedgerPageState extends State<LedgerPage> {
     } else {
       context.read<TransactionsCubit>().start();
     }
+  }
+
+  List<_LedgerListItem> _groupByDay(List<TransactionEntry> entries) {
+    final nowLocal = _resolvedClock.nowUtc().toLocal();
+    final today = DateTime(nowLocal.year, nowLocal.month, nowLocal.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+
+    final grouped = <DateTime, List<TransactionEntry>>{};
+    for (final entry in entries) {
+      final local = entry.occurredAt.toLocal();
+      final day = DateTime(local.year, local.month, local.day);
+      grouped.putIfAbsent(day, () => <TransactionEntry>[]).add(entry);
+    }
+
+    final sortedDays = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
+    final items = <_LedgerListItem>[];
+
+    for (final day in sortedDays) {
+      final dayEntries = grouped[day]!;
+      var incomeMinor = 0;
+      var expenseMinor = 0;
+      for (final tx in dayEntries) {
+        if (tx.type == TransactionType.income) {
+          incomeMinor += tx.amountMinor;
+        } else {
+          expenseMinor += tx.amountMinor;
+        }
+      }
+
+      final String label;
+      if (day == today) {
+        label = 'Today';
+      } else if (day == yesterday) {
+        label = 'Yesterday';
+      } else if (day.year == today.year) {
+        label = DateFormat('EEE, MMM d').format(day);
+      } else {
+        label = DateFormat.yMMMd().format(day);
+      }
+
+      items.add(
+        _DayHeaderItem(
+          dayLocal: day,
+          label: label,
+          incomeMinor: incomeMinor,
+          expenseMinor: expenseMinor,
+          txCount: dayEntries.length,
+        ),
+      );
+      for (final tx in dayEntries) {
+        items.add(_TransactionRowItem(tx));
+      }
+    }
+
+    return items;
   }
 
   @override
@@ -87,8 +218,7 @@ class _LedgerPageState extends State<LedgerPage> {
           return Scaffold(
             body: Column(
               children: [
-                if (state is TransactionsLoaded)
-                  _SummaryStrip(state: state),
+                if (state is TransactionsLoaded) _SummaryStrip(state: state),
                 _FilterBar(
                   searchController: _searchController,
                   categories: categories,
@@ -106,8 +236,9 @@ class _LedgerPageState extends State<LedgerPage> {
                         onRefresh: () => _handleRefresh(context),
                         child: ListView(
                           physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.only(bottom: 96),
                           children: [
-                            const SizedBox(height: 48),
+                            const SizedBox(height: 36),
                             EmptyStateWidget(
                               icon: Icons.receipt_long_outlined,
                               title: hasActiveFilters
@@ -141,27 +272,49 @@ class _LedgerPageState extends State<LedgerPage> {
                         ),
                       ),
                     TransactionsLoaded(:final transactions) =>
-                      RefreshIndicator(
-                        onRefresh: () => _handleRefresh(context),
-                        child: ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(12, 4, 12, 88),
-                          itemCount: transactions.length,
-                          itemBuilder: (context, index) {
-                            final entry = transactions[index];
-                            return _TransactionCard(
-                              entry: entry,
-                              onTap: () => _openForm(
-                                context,
-                                wallets: wallets,
-                                categories: categories,
-                                editing: entry,
-                              ),
-                              onDelete: () => context
-                                  .read<TransactionsCubit>()
-                                  .deleteTransaction(entry.id),
-                            );
-                          },
-                        ),
+                      Builder(
+                        builder: (context) {
+                          final listItems = _groupByDay(transactions);
+                          return RefreshIndicator(
+                            onRefresh: () => _handleRefresh(context),
+                            child: ListView.builder(
+                              padding:
+                                  const EdgeInsets.fromLTRB(12, 4, 12, 96),
+                              itemCount: listItems.length,
+                              itemBuilder: (context, index) {
+                                final item = listItems[index];
+                                return switch (item) {
+                                  _DayHeaderItem() => _DaySectionHeader(
+                                      key: ValueKey(
+                                        'day_${item.dayLocal.toIso8601String()}',
+                                      ),
+                                      header: item,
+                                    ),
+                                  _TransactionRowItem(:final entry) =>
+                                    Dismissible(
+                                      key: ValueKey('tx_dismiss_${entry.id}'),
+                                      direction: DismissDirection.endToStart,
+                                      background: const _DeleteSwipeBackground(),
+                                      onDismissed: (_) =>
+                                          _deleteWithUndo(context, entry),
+                                      child: _TransactionCard(
+                                        key: ValueKey('tx_card_${entry.id}'),
+                                        entry: entry,
+                                        onTap: () => _openForm(
+                                          context,
+                                          wallets: wallets,
+                                          categories: categories,
+                                          editing: entry,
+                                        ),
+                                        onDelete: () =>
+                                            _deleteWithUndo(context, entry),
+                                      ),
+                                    ),
+                                };
+                              },
+                            ),
+                          );
+                        },
                       ),
                   },
                 ),
@@ -184,6 +337,115 @@ class _LedgerPageState extends State<LedgerPage> {
   }
 }
 
+class _DaySectionHeader extends StatelessWidget {
+  const _DaySectionHeader({
+    super.key,
+    required this.header,
+  });
+
+  final _DayHeaderItem header;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = context.ledgerColors;
+    final net = header.netMinor;
+    final netPositive = net >= 0;
+    final netColor = net > 0
+        ? colors.income
+        : net < 0
+            ? colors.expense
+            : theme.colorScheme.onSurfaceVariant;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 10, 4, 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    header.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: theme.colorScheme.onSurface,
+                      letterSpacing: 0.1,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: colors.surfaceSubtle,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: colors.border, width: 1),
+                  ),
+                  child: Text(
+                    '${header.txCount}',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ).tabular,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            CurrencyFormatter.format(
+              net,
+              showPlusSign: netPositive && net > 0,
+            ),
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: netColor,
+              fontWeight: FontWeight.w700,
+            ).tabular,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DeleteSwipeBackground extends StatelessWidget {
+  const _DeleteSwipeBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.ledgerColors;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: colors.expense.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colors.expense.withValues(alpha: 0.4)),
+      ),
+      alignment: Alignment.centerRight,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.delete_outline, color: colors.expense, size: 20),
+          const SizedBox(width: 6),
+          Text(
+            'Delete',
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: colors.expense,
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SummaryStrip extends StatelessWidget {
   const _SummaryStrip({required this.state});
 
@@ -201,17 +463,36 @@ class _SummaryStrip extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Total Balance',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Total Balance',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${state.transactions.length} entries',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ).tabular,
+                  ),
+                ],
               ),
               const SizedBox(height: 2),
-              Text(
-                CurrencyFormatter.format(state.totalWalletBalanceMinor),
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  CurrencyFormatter.format(state.totalWalletBalanceMinor),
+                  maxLines: 1,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.4,
+                  ).tabular,
                 ),
               ),
               const SizedBox(height: 10),
@@ -219,6 +500,7 @@ class _SummaryStrip extends StatelessWidget {
                 children: [
                   Expanded(
                     child: _MetricPill(
+                      icon: Icons.south_west,
                       label: 'Income',
                       value: CurrencyFormatter.format(
                         state.filteredIncomeMinor,
@@ -230,6 +512,7 @@ class _SummaryStrip extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: _MetricPill(
+                      icon: Icons.north_east,
                       label: 'Expense',
                       value: CurrencyFormatter.format(
                         state.filteredExpenseMinor,
@@ -250,11 +533,13 @@ class _SummaryStrip extends StatelessWidget {
 
 class _MetricPill extends StatelessWidget {
   const _MetricPill({
+    required this.icon,
     required this.label,
     required this.value,
     required this.color,
   });
 
+  final IconData icon;
   final String label;
   final String value;
   final Color color;
@@ -264,28 +549,38 @@ class _MetricPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.22), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w600,
-                ),
+          Row(
+            children: [
+              Icon(icon, size: 13, color: color),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ],
           ),
           const SizedBox(height: 2),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w700,
-                ),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              maxLines: 1,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                  ).tabular,
+            ),
           ),
         ],
       ),
@@ -307,7 +602,7 @@ class _FilterBar extends StatelessWidget {
     final filter = context.watch<TransactionFilterCubit>().state;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
       child: Column(
         children: [
           TextField(
@@ -405,6 +700,7 @@ class _FilterBar extends StatelessWidget {
 
 class _TransactionCard extends StatelessWidget {
   const _TransactionCard({
+    super.key,
     required this.entry,
     required this.onTap,
     required this.onDelete,
@@ -436,20 +732,26 @@ class _TransactionCard extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             children: [
-              CircleAvatar(
-                backgroundColor: Color(entry.categoryColorHex).withValues(alpha: 0.14),
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Color(entry.categoryColorHex).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
                 child: Icon(
                   mapCategoryIcon(entry.categoryIconName),
+                  size: 20,
                   color: Color(entry.categoryColorHex),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -464,7 +766,7 @@ class _TransactionCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '${entry.categoryName} • ${entry.walletName} • ${DateFormat.MMMd().format(entry.occurredAt.toLocal())}',
+                      '${entry.categoryName} • ${entry.walletName}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(
@@ -483,7 +785,7 @@ class _TransactionCard extends StatelessWidget {
                     style: theme.textTheme.titleSmall?.copyWith(
                       color: amountColor,
                       fontWeight: FontWeight.w700,
-                    ),
+                    ).tabular,
                   ),
                   const SizedBox(height: 4),
                   Container(
@@ -507,6 +809,7 @@ class _TransactionCard extends StatelessWidget {
                 ],
               ),
               PopupMenuButton<String>(
+                key: Key('tx_menu_${entry.id}'),
                 tooltip: 'Actions',
                 onSelected: (value) {
                   if (value == 'edit') {
@@ -516,8 +819,26 @@ class _TransactionCard extends StatelessWidget {
                   }
                 },
                 itemBuilder: (context) => const [
-                  PopupMenuItem(value: 'edit', child: Text('Edit')),
-                  PopupMenuItem(value: 'delete', child: Text('Delete')),
+                  PopupMenuItem(
+                    value: 'edit',
+                    child: Row(
+                      children: [
+                        Icon(Icons.edit_outlined, size: 18),
+                        SizedBox(width: 8),
+                        Text('Edit'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: Row(
+                      children: [
+                        Icon(Icons.delete_outline, size: 18),
+                        SizedBox(width: 8),
+                        Text('Delete'),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ],

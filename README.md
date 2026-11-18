@@ -3,6 +3,7 @@
 > An offline-first personal and shared expense tracker built with Flutter, BLoC, Drift (SQLite), transactional outbox synchronization, and Supabase.
 
 [![Flutter CI](https://github.com/bachiep/ledgerflow-flutter/actions/workflows/ci.yml/badge.svg)](https://github.com/bachiep/ledgerflow-flutter/actions/workflows/ci.yml)
+![Version](https://img.shields.io/badge/Version-2.0.0-1E40AF)
 [![Release APK](https://img.shields.io/badge/APK-v1.0.0%20Release-10B981?logo=android&logoColor=white)](https://github.com/bachiep/ledgerflow-flutter/releases/tag/v1.0.0)
 ![Flutter](https://img.shields.io/badge/Flutter-3.41.6-02569B?logo=flutter&logoColor=white)
 ![Dart](https://img.shields.io/badge/Dart-3.11.4-0175C2?logo=dart&logoColor=white)
@@ -14,13 +15,13 @@
 
 ## Architecture Overview
 
-LedgerFlow uses **SQLite (`Drift`) as the single source of truth** so every screen updates reactively in under 16ms whether the device is online, in an elevator, or in airplane mode. Every create, edit, or soft-delete writes both the domain table (`wallets` / `transactions`) and an immutable mutation entry into `sync_outbox` inside a **single atomic SQLite transaction**, preventing lost writes across app crashes or flaky networks.
+LedgerFlow uses **SQLite (`Drift`) as the single source of truth** so every screen updates reactively in under 16ms whether the device is online, in an elevator, or in airplane mode. Every create, edit, soft-delete, or undo restore writes both the domain table (`wallets` / `transactions`) and an immutable mutation entry into `sync_outbox` inside a **single atomic SQLite transaction**, preventing lost writes across app crashes or flaky networks.
 
 ```mermaid
 flowchart LR
-    UI["Presentation Layer<br/>(Ledger, Analytics, Wallets, Sync Inspector)"]
+    UI["Presentation Layer<br/>(Date-Grouped Ledger, 6M Analytics & CSV, Wallets, Sync Inspector)"]
     BLoC["State Layer<br/>(TransactionsCubit, SearchBloc, AnalyticsCubit, SyncBloc)"]
-    Repo["Repositories<br/>(DriftTransactionRepo, DriftWalletRepo, SyncRepo)"]
+    Repo["Repositories<br/>(DriftTransactionRepo, DriftWalletRepo, DriftAnalyticsRepo, SyncRepo)"]
     SQLite["Local SQLite (Drift)<br/>Wallets | Categories | Transactions | SyncOutbox"]
     Remote["RemoteSyncDataSource<br/>(Supabase Postgres + RLS | Simulated Cloud)"]
 
@@ -41,9 +42,9 @@ sequenceDiagram
     participant SB as SyncBloc (droppable)
     participant API as RemoteSyncDataSource
 
-    U->>DB: Create / Edit / Soft-Delete Transaction (UUIDv4)
-    Note over DB: Single Atomic Transaction:<br/>1. Upsert transactions (sync_status = 'pending')<br/>2. Insert sync_outbox (processed_at = NULL)
-    DB-->>U: Reactive Stream updates Ledger, Balance & Badge immediately
+    U->>DB: Create / Edit / Soft-Delete / Undo Restore (UUIDv4)
+    Note over DB: Single Atomic Transaction:<br/>1. Upsert/Tombstone transactions (sync_status = 'pending')<br/>2. Insert sync_outbox (processed_at = NULL)
+    DB-->>U: Reactive Stream updates Ledger, Daily Subtotals & Badge immediately
 
     Note over U,SB: Connectivity restored / Tap Sync Now / Simulate Offline OFF
     SB->>DB: Read unprocessed sync_outbox rows
@@ -65,14 +66,14 @@ sequenceDiagram
 
 ## Key Technical Highlights
 
-- **Atomic Transactional Outbox:** [`AppDatabase.upsertTransactionAtomic`](lib/core/database/app_database.dart), [`upsertWalletAtomic`](lib/core/database/app_database.dart), and [`softDeleteTransactionAtomic`](lib/core/database/app_database.dart) persist business records and outbox payloads together inside SQLite `transaction(...)` blocks with `PRAGMA foreign_keys = ON`.
-- **Integer Money Precision & Typed Errors:** All monetary values are stored in integer minor units (`amountMinor`, avoiding `double` rounding bugs) via [`CurrencyFormatter`](lib/core/utils/currency_formatter.dart), and repositories return Dart 3 exhaustive [`Result<T>`](lib/core/result/result.dart) (`Success` / `Err`) wrapping [`Failure`](lib/core/error/failure.dart).
-- **Concurrency-Safe BLoC Event Handling:**
-  - [`TransactionSearchBloc`](lib/features/transactions/presentation/bloc/transaction_search_bloc.dart) uses `bloc_concurrency`'s `restartable()` transformer with a 300ms debounce so stale search queries are canceled automatically.
-  - [`SyncBloc`](lib/features/sync/presentation/bloc/sync_bloc.dart) uses `droppable()` so rapid sync taps or flaky connectivity flickers never run overlapping outbox flushes.
-- **SQL-Backed Monthly Cashflow & Budget Dashboard:** [`AppDatabase.watchMonthlyAnalyticsSql`](lib/core/database/app_database.dart) aggregates income, expenses, and per-category spend in SQLite (`SUM`, `GROUP BY`, `JOIN`), rendered with a custom [`CashflowDonutChart`](lib/features/analytics/presentation/widgets/cashflow_donut_chart.dart) (`CustomPainter`) and budget alerts (`Near limit` >= 80%, `Over budget` >= 100%).
-- **Live Sync Outbox Inspector & Guest Offline Demo:** [`SyncOutboxInspectorSheet`](lib/features/sync/presentation/widgets/sync_outbox_inspector_sheet.dart) exposes pending/synced/failed outbox payloads, attempt counts, error logs, and a **Simulate Offline** toggle; [`SampleDataSeeder`](lib/core/database/sample_data_seeder.dart) seeds 30 days of realistic Vietnamese personal and shared-fund transactions in a single atomic transaction for instant offline testing.
-- **Last-Write-Wins (LWW) Delta Merge & Soft-Delete Tombstones:** [`AppDatabase.applyRemoteChangesLww`](lib/core/database/app_database.dart) compares `updated_at_epoch_ms` deterministically and propagates `deleted_at_epoch_ms` tombstones across devices, backed by Postgres Row-Level Security in [`supabase/schema.sql`](supabase/schema.sql).
+- **Atomic Transactional Outbox & 5-Second Undo Recovery:** [`AppDatabase.upsertTransactionAtomic`](lib/core/database/app_database.dart), [`softDeleteTransactionAtomic`](lib/core/database/app_database.dart), and [`restoreTransactionAtomic`](lib/core/database/app_database.dart) execute domain mutations and `sync_outbox` appends inside SQLite `transaction(...)` blocks (`PRAGMA foreign_keys = ON`). Deleting from the card menu, swipe gesture, or edit sheet triggers a 5-second `UNDO` SnackBar backed by atomic outbox restoration.
+- **Swiss Fintech Theme & Responsive Zero-Overlap Layout:** [`AppTheme`](lib/core/theme/app_theme.dart) pairs Deep Trust Blue (`#1E40AF`), Emerald (`#059669`), and Crimson (`#DC2626`) across crisp `1px`-bordered Light (`#F8FAFC`) and OLED Dark (`#090D16`) surfaces, `FontFeature.tabularFigures()` column alignment, and `96dp` bottom scroll clearance verified across `320px` and `393px` viewports.
+- **Date-Grouped Ledger & Tap-to-Edit:** [`LedgerPage`](lib/features/transactions/presentation/pages/ledger_page.dart) groups entries chronologically (`Today`, `Yesterday`, formatted date) with daily net cashflow subtotals, debounced search (`restartable()` 300ms in [`TransactionSearchBloc`](lib/features/transactions/presentation/bloc/transaction_search_bloc.dart)), and prefilled [`TransactionFormSheet`](lib/features/transactions/presentation/widgets/transaction_form_sheet.dart) editing.
+- **6-Month SQL Trend, Interactive Budget Editor & Offline CSV Export:**
+  - [`AppDatabase.watchMonthlyAnalyticsSql`](lib/core/database/app_database.dart) computes monthly KPIs, category breakdowns, and trailing 6-month `strftime('%Y-%m', ...)` income/expense series rendered via [`CashflowTrendChart`](lib/features/analytics/presentation/widgets/cashflow_trend_chart.dart) (`CustomPainter`) and [`CashflowDonutChart`](lib/features/analytics/presentation/widgets/cashflow_donut_chart.dart).
+  - [`BudgetEditorSheet`](lib/features/analytics/presentation/widgets/budget_editor_sheet.dart) persists category budget limits directly to SQLite and refreshes `Near limit` (`>= 80%`) / `Over budget` (`>= 100%`) badges immediately.
+  - [`CsvStatementExporter`](lib/features/analytics/domain/csv_statement_exporter.dart) and [`CsvExportSheet`](lib/features/analytics/presentation/widgets/csv_export_sheet.dart) generate RFC-4180 monthly CSV statements with spreadsheet formula-prefix neutralization (`=`, `+`, `-`, `@`), line-by-line monospace preview, and clipboard export.
+- **Enriched Wallets & Concurrency-Safe Sync:** [`WalletsPage`](lib/features/wallets/presentation/pages/wallets_page.dart) displays SQL-computed monthly inflow, outflow, net delta, transaction count, and Personal/Shared badges with 1-tap filtered Ledger navigation; [`SyncBloc`](lib/features/sync/presentation/bloc/sync_bloc.dart) uses `droppable()` alongside [`SyncOutboxInspectorSheet`](lib/features/sync/presentation/widgets/sync_outbox_inspector_sheet.dart) and LWW tombstone merging.
 
 ---
 
@@ -80,13 +81,13 @@ sequenceDiagram
 
 | Layer | Technology | Rationale |
 | :--- | :--- | :--- |
-| Framework | Flutter `3.41.6` / Dart `3.11.4` | Cross-platform UI, Dart 3 `sealed class` exhaustiveness, Material 3 Light/Dark themes |
-| State Management | `flutter_bloc`, `bloc_concurrency`, `equatable` | Explicit state transitions, `Cubit` for UI filters, `Bloc` (`restartable()`, `droppable()`) |
-| Local Persistence | `drift`, `sqlite3`, `sqlite3_flutter_libs` | Type-safe SQLite migrations, atomic transactions, SQL aggregations, reactive `Stream` queries |
-| Cloud Sync & Auth | `supabase_flutter` | Optional Postgres sync via UUID idempotent `upsert` and RLS (`auth.uid() = user_id`), paired with in-memory `SimulatedRemoteSyncDataSource` fallback |
-| Navigation & DI | `go_router`, `get_it` | Auth-guarded `StatefulShellRoute.indexedStack` 3-tab shell and clean dependency injection |
-| Connectivity & Utils | `connectivity_plus`, `uuid`, `intl` | Network reconnect triggers, client-side UUIDv4 primary keys, locale-aware currency formatting |
-| Testing | `flutter_test`, `bloc_test`, `mocktail` | In-memory SQLite (`NativeDatabase.memory()`), `FixedClock` determinism, BLoC & widget tests |
+| Framework | Flutter `3.41.6` / Dart `3.11.4` | Cross-platform UI, Dart 3 `sealed class` exhaustiveness, Swiss Fintech Light & OLED Dark themes |
+| State Management | `flutter_bloc`, `bloc_concurrency`, `equatable` | Explicit state transitions, `Cubit` for UI filters/analytics, `Bloc` (`restartable()`, `droppable()`) |
+| Local Persistence | `drift`, `sqlite3`, `sqlite3_flutter_libs` | Type-safe SQLite schema, atomic transactions, SQL aggregations, reactive `Stream` queries |
+| Cloud Sync & Auth | `supabase_flutter` | Optional Postgres sync via UUID idempotent `upsert` and RLS (`auth.uid() = user_id`), paired with in-memory `SimulatedRemoteSyncDataSource` |
+| Navigation & DI | `go_router`, `get_it` | Auth-guarded `StatefulShellRoute.indexedStack` 3-tab shell and deterministic lifecycle disposal |
+| Connectivity & Utils | `connectivity_plus`, `uuid`, `intl` | Network reconnect triggers, client-side UUIDv4 primary keys, locale-aware integer minor-unit formatting |
+| Testing | `flutter_test`, `bloc_test`, `mocktail` | In-memory SQLite (`NativeDatabase.memory()`), `FixedClock` determinism, BLoC, CSV & responsive layout tests |
 
 ---
 
@@ -109,10 +110,10 @@ dart run build_runner build
 flutter run
 ```
 On the **Welcome** screen, tap **Continue as Guest (30-Day Sample Data)**. This runs entirely offline using local SQLite + [`SimulatedRemoteSyncDataSource`](lib/features/sync/data/simulated_remote_sync_data_source.dart):
-1. Explore 30 days of pre-seeded personal and apartment group fund entries on **Ledger**, **Analytics**, and **Wallets**.
-2. Tap the cloud status icon in the top bar to open **Sync Outbox Inspector** and turn **Simulate Offline** ON.
-3. Add or soft-delete a transaction — observe it immediately appear with a **`PENDING`** badge and enqueue inside the outbox inspector.
-4. Open **Sync Outbox Inspector** and turn **Simulate Offline** OFF (or tap **Sync Now**) — observe `SyncBloc` flush the outbox and transition items from `PENDING` to `SYNCED`.
+1. Explore date-grouped transactions on **Ledger**, tap any row to edit, or delete and tap **UNDO** within 5 seconds to restore atomically.
+2. Open **Analytics** to inspect the 6-Month Cashflow Trend bar chart, tap any category row to adjust its monthly budget cap, or tap **Export CSV** for formula-safe RFC-4180 statement preview and clipboard copy.
+3. Open **Wallets** to review monthly inflow, outflow, net delta, and transaction counts per personal or shared wallet, then tap a card to jump directly to its filtered ledger.
+4. Tap the cloud status icon in the top bar to open **Sync Outbox Inspector**, toggle **Simulate Offline**, and watch mutations transition `PENDING -> SYNCED`.
 
 ### 3. (Optional) Connect Your Own Supabase Project
 1. Copy `.env.example` for reference and apply [`supabase/schema.sql`](supabase/schema.sql) in the Supabase SQL Editor (creates `wallets`, `categories`, `transactions` tables + RLS policies + `updated_at` indexes).
@@ -133,18 +134,18 @@ flutter build apk --release
 
 ## Screenshots
 
-### Mobile UI Preview
+### Mobile UI Preview (`393x852 @2x`)
 
-| Offline Ledger & Search | SQL Cashflow & Budgets | Sync Outbox Inspector | Shared Wallets (Dark Mode) |
-| :---: | :---: | :---: | :---: |
-| <img src="docs/screenshots/01-ledger-transactions.png" width="200" alt="Ledger Transactions" /> | <img src="docs/screenshots/02-analytics-cashflow.png" width="200" alt="Analytics Cashflow" /> | <img src="docs/screenshots/03-sync-outbox-inspector.png" width="200" alt="Sync Outbox Inspector" /> | <img src="docs/screenshots/04-wallets-dark-mode.png" width="200" alt="Wallets Dark Mode" /> |
-| 30-day seeded ledger with instant `Drift` SQLite stream updates and `SYNCED` status pills | SQL `SUM`/`GROUP BY` donut breakdown and threshold budget alerts (`Near limit 87%`) | In-app **Simulate Offline** toggle and live `sync_outbox` queue showing `PENDING` mutations | Personal & Shared group wallets with Material 3 dark theme |
+| Date-Grouped Ledger | 6-Month Trend & Budgets | Sync Outbox Inspector | Wallets (OLED Dark) | Offline CSV Statement |
+| :---: | :---: | :---: | :---: | :---: |
+| <img src="docs/screenshots/01-ledger-transactions.png" width="175" alt="Ledger Transactions" /> | <img src="docs/screenshots/02-analytics-cashflow.png" width="175" alt="Analytics Cashflow" /> | <img src="docs/screenshots/03-sync-outbox-inspector.png" width="175" alt="Sync Outbox Inspector" /> | <img src="docs/screenshots/04-wallets-dark-mode.png" width="175" alt="Wallets Dark Mode" /> | <img src="docs/screenshots/05-csv-budget-sheet.png" width="175" alt="Offline CSV Statement Export" /> |
+| Chronological day sections with net subtotals, tap-to-edit & `SYNCED` pills | 6-month SQL trend chart, donut breakdown & interactive budget alerts | In-app **Simulate Offline** toggle and live `sync_outbox` `PENDING` queue | Personal & Shared badges with monthly inflow, outflow, net delta & tx counts | RFC-4180 CSV preview with formula-injection protection & clipboard copy |
 
 ---
 
 ## Testing & Verification
 
-Run static analysis and the complete automated test suite (`42` unit, integration, BLoC, and widget tests across `12` test files):
+Run static analysis and the complete automated test suite (`56` tests across `13` test files — `55` active unit, SQLite, BLoC, and widget tests plus `1` `--dart-define=WRITE_SCREENSHOTS=true` guarded screenshot test):
 
 ```bash
 flutter analyze --no-pub
@@ -159,12 +160,12 @@ flutter test --no-pub --concurrency=1 --timeout 30s
 > On Linux/CI, install `libsqlite3-dev` and run `flutter test --concurrency=1`.
 
 ### Verified Test Coverage Summary
-- **Core Foundations (`9` tests):** `AppConfig` flag validation (`1`), `Result<T>` / `CurrencyFormatter` integer minor-unit math / `FixedClock` (`4`), shared `Loading`/`Empty`/`Error` state widgets (`2`), and `ThemeCubit` (`2`).
-- **SQLite Outbox & Seeder (`7` tests):** Atomic `transactions` + `sync_outbox` persistence, foreign-key rollback, balance recalculation on edit/soft-delete, retry error retention (`attempts` & `last_error`), and idempotent 30-day seeding.
-- **Transactions, Search & Filter (`8` tests):** `TransactionSearchBloc` `restartable()` 300ms debounce, `TransactionFilterCubit` combinations (`3`), `TransactionsCubit` reactive stream updates (`4`), and `LedgerPage` empty-to-created widget flow (`1`).
-- **Analytics & Budget Alerts (`4` tests):** Monthly SQL `SUM`/`GROUP BY`/`JOIN` aggregation, UTC month boundaries, `AnalyticsEmpty` -> `AnalyticsLoaded` month navigation, and `>= 80%` / `>= 100%` budget badges.
-- **Sync, Outbox Inspector & Wallets (`13` tests):** `SyncBloc` `droppable()` duplicate prevention, push error retention + retry, LWW delta conflict resolution, 1-tap Guest onboarding (`6`), `SyncInspectorCubit`, `Simulate Offline -> PENDING -> SYNCED` flow, shared group wallet creation, cross-device soft-delete tombstone propagation, and `320px` keyboard-inset overflow check (`7`).
-- **App Shell Smoke (`1` test):** `LedgerFlowApp` 3-tab navigation shell and theme toggle (`42/42` total passed).
+- **Core Foundations (`11` tests):** `AppConfig` flag validation (`1`), `Result<T>` / `CurrencyFormatter` minor-unit math, editable input & compact axis formatting / `FixedClock` (`6`), shared `Loading`/`Empty`/`Error` state widgets (`2`), and `ThemeCubit` (`2`).
+- **SQLite Outbox, Restore & Seeder (`10` tests):** Atomic `transactions` + `sync_outbox` writes, foreign-key rollback, balance recalculation on edit/soft-delete/`restoreTransactionAtomic`, wallet monthly inflow/outflow/tx-count SQL queries, budget persistence, retry error retention (`attempts` & `last_error`), and idempotent 30-day seeding.
+- **Transactions, Date Grouping, Edit & Undo (`13` tests):** `TransactionSearchBloc` `restartable()` 300ms debounce, `TransactionFilterCubit` combinations (`3`), `TransactionsCubit` reactive streams, delete & restore (`5`), `LedgerPage` empty-to-created, date-grouped daily sections, tap-to-edit, 5-second `UNDO` SnackBar recovery, and `320px`/`393px` zero-overflow checks across all 3 tabs (`5`).
+- **Analytics, 6M Trend, Budget Editor & CSV Export (`7` tests):** Monthly & 6-month trailing SQL aggregations, UTC month boundaries, `CsvStatementExporter` RFC-4180 quoting & formula-injection escaping (`=`, `+`, `-`, `@`), `AnalyticsEmpty` -> `AnalyticsLoaded` month navigation, `BudgetEditorSheet` live threshold transitions, and `CsvExportSheet` clipboard copy.
+- **Sync, Outbox Inspector & Wallets (`13` tests):** `SyncBloc` `droppable()` duplicate prevention, push error retention + retry, LWW delta conflict resolution, 1-tap Guest onboarding (`6`), `SyncInspectorCubit`, `Simulate Offline -> PENDING -> SYNCED` flow, shared group wallet creation, cross-device tombstone propagation, and `320px` keyboard-inset modal layout check (`7`).
+- **App Shell Smoke & Screenshot Guard (`2` tests):** `LedgerFlowApp` 3-tab navigation shell + theme toggle (`1`) and `WRITE_SCREENSHOTS` guarded screenshot render test (`1`).
 
 ---
 
@@ -182,19 +183,19 @@ lib/
 │   ├── models/             # SyncStatus enum
 │   ├── result/             # Dart 3 sealed Result<T> (Success / Err)
 │   ├── router/             # go_router auth-guarded StatefulShellRoute
-│   ├── theme/              # Material 3 Light/Dark themes & ThemeCubit
+│   ├── theme/              # Swiss Fintech Light & OLED Dark ThemeData + ThemeCubit
 │   ├── time/               # AppClock & FixedClock abstractions
-│   ├── utils/              # Integer minor-unit CurrencyFormatter
+│   ├── utils/              # Integer minor-unit CurrencyFormatter & compact axis helpers
 │   └── widgets/            # Shared LoadingStateWidget, EmptyStateWidget, ErrorStateWidget
 └── features/
-    ├── analytics/          # SQL cashflow summary, CustomPainter donut chart, budget alerts
+    ├── analytics/          # 6M SQL trend & donut charts, BudgetEditorSheet, CsvStatementExporter
     ├── auth/               # Guest offline mode & optional Supabase email/password auth
     ├── sync/               # SyncBloc (droppable), SyncOutboxInspectorSheet, LWW sync engine
-    ├── transactions/       # TransactionsCubit, SearchBloc (restartable), FilterCubit, FormSheet
-    └── wallets/            # Personal & shared group wallets CRUD + net balance queries
+    ├── transactions/       # Date-grouped Ledger, TransactionsCubit, SearchBloc, FormSheet
+    └── wallets/            # Personal & shared group wallets with monthly inflow/outflow/net delta
 supabase/
 └── schema.sql              # Postgres schema + RLS policies (auth.uid() = user_id)
-test/                       # Unit, Drift DB, BLoC/Cubit, and Widget integration tests (12 files)
+test/                       # Unit, Drift DB, BLoC/Cubit, CSV, and Widget integration tests (13 files)
 ```
 
 ---

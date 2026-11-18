@@ -1,8 +1,8 @@
 import 'package:ledgerflow_flutter/core/database/app_database.dart';
 import 'package:ledgerflow_flutter/core/error/failure.dart';
-import 'package:ledgerflow_flutter/core/models/sync_status.dart';
 import 'package:ledgerflow_flutter/core/result/result.dart';
 import 'package:ledgerflow_flutter/core/time/clock.dart';
+import 'package:ledgerflow_flutter/features/transactions/data/transaction_row_mapper.dart';
 import 'package:ledgerflow_flutter/features/transactions/domain/transaction_models.dart';
 import 'package:ledgerflow_flutter/features/transactions/domain/transaction_repository.dart';
 import 'package:uuid/uuid.dart';
@@ -42,7 +42,8 @@ class DriftTransactionRepository implements TransactionRepository {
           toEpochMs: toEpochMs,
         )
         .map(
-          (rows) => rows.map(_mapJoinedRow).toList(growable: false),
+          (rows) =>
+              rows.map(mapJoinedTransactionRow).toList(growable: false),
         );
   }
 
@@ -125,28 +126,24 @@ class DriftTransactionRepository implements TransactionRepository {
     }
   }
 
-  TransactionEntry _mapJoinedRow(TransactionJoinedRow row) {
-    return TransactionEntry(
-      id: row.transaction.id,
-      walletId: row.transaction.walletId,
-      walletName: row.wallet.name,
-      walletCurrency: row.wallet.currency,
-      categoryId: row.transaction.categoryId,
-      categoryName: row.category.name,
-      categoryIconName: row.category.iconName,
-      categoryColorHex: row.category.colorHex,
-      type: TransactionType.fromStorage(row.transaction.type),
-      amountMinor: row.transaction.amountMinor,
-      note: row.transaction.note,
-      occurredAt: DateTime.fromMillisecondsSinceEpoch(
-        row.transaction.occurredAtEpochMs,
-        isUtc: true,
-      ),
-      updatedAt: DateTime.fromMillisecondsSinceEpoch(
-        row.transaction.updatedAtEpochMs,
-        isUtc: true,
-      ),
-      syncStatus: SyncStatus.fromStorage(row.transaction.syncStatus),
-    );
+  @override
+  Future<Result<void>> restoreTransaction(String id) async {
+    try {
+      final restored = await _db.restoreTransactionAtomic(
+        transactionId: id,
+        updatedAtEpochMs: _clock.nowUtc().millisecondsSinceEpoch,
+        outboxId: _uuid.v4(),
+      );
+      if (!restored) {
+        return const Err(
+          ValidationFailure('Transaction not found or already active.'),
+        );
+      }
+      return const Success(null);
+    } catch (error) {
+      return Err(
+        DatabaseFailure('Failed to restore transaction.', cause: error),
+      );
+    }
   }
 }
