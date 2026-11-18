@@ -2,6 +2,14 @@
 
 > An offline-first personal and shared expense tracker built with Flutter, BLoC, Drift (SQLite), transactional outbox synchronization, and Supabase.
 
+[![Flutter CI](https://github.com/bachiep/ledgerflow-flutter/actions/workflows/ci.yml/badge.svg)](https://github.com/bachiep/ledgerflow-flutter/actions/workflows/ci.yml)
+[![Release APK](https://img.shields.io/badge/APK-v1.0.0%20Release-10B981?logo=android&logoColor=white)](https://github.com/bachiep/ledgerflow-flutter/releases/tag/v1.0.0)
+![Flutter](https://img.shields.io/badge/Flutter-3.41.6-02569B?logo=flutter&logoColor=white)
+![Dart](https://img.shields.io/badge/Dart-3.11.4-0175C2?logo=dart&logoColor=white)
+![State Management](https://img.shields.io/badge/State-flutter__bloc-673AB7)
+![Local DB](https://img.shields.io/badge/Database-Drift%20SQLite-0F766E)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 ---
 
 ## Architecture Overview
@@ -120,6 +128,17 @@ flutter run \
 ```bash
 flutter build apk --release
 ```
+
+---
+
+## Screenshots
+
+### Mobile UI Preview
+
+| Offline Ledger & Search | SQL Cashflow & Budgets | Sync Outbox Inspector | Shared Wallets (Dark Mode) |
+| :---: | :---: | :---: | :---: |
+| <img src="docs/screenshots/01-ledger-transactions.png" width="200" alt="Ledger Transactions" /> | <img src="docs/screenshots/02-analytics-cashflow.png" width="200" alt="Analytics Cashflow" /> | <img src="docs/screenshots/03-sync-outbox-inspector.png" width="200" alt="Sync Outbox Inspector" /> | <img src="docs/screenshots/04-wallets-dark-mode.png" width="200" alt="Wallets Dark Mode" /> |
+| 30-day seeded ledger with instant `Drift` SQLite stream updates and `SYNCED` status pills | SQL `SUM`/`GROUP BY` donut breakdown and threshold budget alerts (`Near limit 87%`) | In-app **Simulate Offline** toggle and live `sync_outbox` queue showing `PENDING` mutations | Personal & Shared group wallets with Material 3 dark theme |
 
 ---
 
