@@ -251,6 +251,108 @@ void main() {
       expect(find.text('Da Lat Trip Fund'), findsOneWidget);
       expect(find.text('Shared'), findsOneWidget);
     });
+
+    testWidgets(
+      'WalletsPage Quick Transfer validates balance and executes atomic transfer between wallets',
+      (WidgetTester tester) async {
+        final db = sl<AppDatabase>();
+        final clock = sl<AppClock>();
+        await db.upsertWalletAtomic(
+          id: 'wallet-savings',
+          name: 'Savings Vault',
+          currency: 'VND',
+          initialBalanceMinor: 500000,
+          isShared: false,
+          updatedAtEpochMs: clock.nowUtc().millisecondsSinceEpoch,
+          outboxId: 'o-init-w2',
+        );
+
+        await tester.pumpWidget(const LedgerFlowApp());
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Wallets'));
+        await tester.pump();
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 60)),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Savings Vault'), findsOneWidget);
+        expect(find.byKey(const Key('quick_transfer_button')), findsOneWidget);
+        await tester.tap(find.byKey(const Key('quick_transfer_button')));
+        await tester.pump();
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 60)),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Wallet Transfer'), findsOneWidget);
+
+        // Overdraft validation test
+        await tester.enterText(
+          find.byKey(const Key('transfer_amount_field')),
+          '9999999999',
+        );
+        await tester.tap(find.byKey(const Key('transfer_submit_button')));
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('Insufficient balance'), findsOneWidget);
+
+        // Valid transfer
+        await tester.enterText(
+          find.byKey(const Key('transfer_amount_field')),
+          '250000',
+        );
+        await tester.enterText(
+          find.byKey(const Key('transfer_note_field')),
+          'Fund rebalance',
+        );
+        await tester.tap(find.byKey(const Key('transfer_submit_button')));
+        await tester.pump();
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 60)),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Wallet Transfer'), findsNothing);
+        expect(find.textContaining('Transferred'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'LedgerPage shows active wallet filter banner with 1-tap Clear / Show All button',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(const LedgerFlowApp());
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Wallets'));
+        await tester.pumpAndSettle();
+
+        // Tap on Personal Cash wallet card to filter
+        await tester.tap(find.text('Personal Cash'));
+        await tester.pumpAndSettle();
+
+        // Verify active wallet filter banner on LedgerPage
+        expect(
+          find.byKey(const Key('active_wallet_filter_banner')),
+          findsOneWidget,
+        );
+        expect(find.text('Showing: Personal Cash'), findsWidgets);
+        expect(
+          find.byKey(const Key('clear_wallet_filter_button')),
+          findsOneWidget,
+        );
+
+        // 1-tap clear / Show All
+        await tester.tap(find.byKey(const Key('clear_wallet_filter_button')));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('active_wallet_filter_banner')),
+          findsNothing,
+        );
+      },
+    );
   });
 
   test('Soft-delete tombstone sync propagates deletion to a second device', () async {

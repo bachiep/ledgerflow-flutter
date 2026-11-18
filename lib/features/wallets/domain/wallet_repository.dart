@@ -10,4 +10,11 @@ abstract interface class WalletRepository {
     int initialBalanceMinor = 0,
     bool isShared = false,
   });
+
+  Future<Result<void>> transferBetweenWallets({
+    required String sourceWalletId,
+    required String destinationWalletId,
+    required int amountMinor,
+    String note = '',
+  });
 }

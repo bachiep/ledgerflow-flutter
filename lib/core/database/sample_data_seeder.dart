@@ -21,6 +21,7 @@ final class SampleDataSeeder {
       '22222222-2222-4222-8222-222222222206';
   static const String catSalaryId = '22222222-2222-4222-8222-222222222207';
   static const String catFreelanceId = '22222222-2222-4222-8222-222222222208';
+  static const String catTransferId = '22222222-2222-4222-8222-222222222209';
 
   Future<void> seedDefaultCategories() async {
     await _db.batch((batch) {
@@ -100,6 +101,15 @@ final class SampleDataSeeder {
         type: 'income',
         iconName: 'work',
         colorHex: 0xFF0284C7,
+        monthlyBudgetMinor: const Value(0),
+        updatedAtEpochMs: nowMs,
+      ),
+      CategoriesCompanion.insert(
+        id: catTransferId,
+        name: 'Wallet Transfer',
+        type: 'expense',
+        iconName: 'sync_alt',
+        colorHex: 0xFF6366F1,
         monthlyBudgetMinor: const Value(0),
         updatedAtEpochMs: nowMs,
       ),

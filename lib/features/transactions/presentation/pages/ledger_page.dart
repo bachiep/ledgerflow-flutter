@@ -204,6 +204,7 @@ class _LedgerPageState extends State<LedgerPage> {
       },
       child: BlocBuilder<TransactionsCubit, TransactionsState>(
         builder: (context, state) {
+          final filter = context.watch<TransactionFilterCubit>().state;
           final wallets = switch (state) {
             TransactionsLoaded(:final wallets) => wallets,
             TransactionsEmpty(:final wallets) => wallets,
@@ -215,13 +216,29 @@ class _LedgerPageState extends State<LedgerPage> {
             _ => const <CategoryItem>[],
           };
 
+          final activeWallet = filter.walletId != null
+              ? wallets.cast<Wallet?>().firstWhere(
+                    (w) => w?.id == filter.walletId,
+                    orElse: () => null,
+                  )
+              : null;
+          final activeWalletName = activeWallet?.name ?? 'Selected Wallet';
+
           return Scaffold(
             body: Column(
               children: [
+                if (filter.walletId != null)
+                  _ActiveWalletBanner(
+                    walletName: activeWalletName,
+                    onClear: () {
+                      context.read<TransactionFilterCubit>().selectWallet(null);
+                    },
+                  ),
                 if (state is TransactionsLoaded) _SummaryStrip(state: state),
                 _FilterBar(
                   searchController: _searchController,
                   categories: categories,
+                  activeWalletName: activeWalletName,
                 ),
                 Expanded(
                   child: switch (state) {
@@ -588,14 +605,77 @@ class _MetricPill extends StatelessWidget {
   }
 }
 
+class _ActiveWalletBanner extends StatelessWidget {
+  const _ActiveWalletBanner({
+    required this.walletName,
+    required this.onClear,
+  });
+
+  final String walletName;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      key: const Key('active_wallet_filter_banner'),
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: theme.colorScheme.primary.withValues(alpha: 0.25),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.filter_alt,
+            size: 18,
+            color: theme.colorScheme.primary,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Showing: $walletName',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton.icon(
+            key: const Key('clear_wallet_filter_button'),
+            onPressed: onClear,
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              foregroundColor: theme.colorScheme.primary,
+            ),
+            icon: const Icon(Icons.close, size: 14),
+            label: const Text('Show All'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _FilterBar extends StatelessWidget {
   const _FilterBar({
     required this.searchController,
     required this.categories,
+    required this.activeWalletName,
   });
 
   final TextEditingController searchController;
   final List<CategoryItem> categories;
+  final String activeWalletName;
 
   @override
   Widget build(BuildContext context) {
@@ -647,7 +727,12 @@ class _FilterBar extends StatelessWidget {
                 if (filter.walletId != null) ...[
                   const SizedBox(width: 6),
                   InputChip(
-                    label: const Text('Wallet Filter'),
+                    key: const Key('active_wallet_filter_chip'),
+                    avatar: const Icon(
+                      Icons.account_balance_wallet_outlined,
+                      size: 16,
+                    ),
+                    label: Text('Showing: $activeWalletName'),
                     selected: true,
                     onDeleted: () => context
                         .read<TransactionFilterCubit>()
