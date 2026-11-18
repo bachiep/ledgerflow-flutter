@@ -67,7 +67,7 @@ class _SyncOutboxInspectorBody extends StatelessWidget {
                     child: Text(
                       'Sync Outbox Inspector',
                       style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),
@@ -298,8 +298,9 @@ class _OutboxItemTile extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest,
+              color: colors.surfaceSubtle,
               borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: colors.border),
             ),
             child: SelectableText(
               item.payloadJson,

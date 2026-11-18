@@ -17,4 +17,6 @@ abstract interface class TransactionRepository {
   });
 
   Future<Result<void>> softDeleteTransaction(String id);
+
+  Future<Result<void>> restoreTransaction(String id);
 }

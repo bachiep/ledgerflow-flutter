@@ -72,9 +72,17 @@ class _WelcomePageState extends State<WelcomePage> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Center(
-                        child: CircleAvatar(
-                          radius: 34,
-                          backgroundColor: theme.colorScheme.primaryContainer,
+                        child: Container(
+                          width: 68,
+                          height: 68,
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primaryContainer,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: theme.colorScheme.primary
+                                  .withValues(alpha: 0.2),
+                            ),
+                          ),
                           child: Icon(
                             Icons.account_balance_wallet,
                             size: 34,

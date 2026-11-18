@@ -225,4 +225,117 @@ void main() {
     expect(txs, hasLength(16));
     expect(pendingCount, 0);
   });
+
+  test('restoreTransactionAtomic restores soft-deleted row, balance, and enqueues upsert', () async {
+    final nowMs = clock.nowUtc().millisecondsSinceEpoch;
+    await db.upsertTransactionAtomic(
+      id: 'tx-undo',
+      walletId: 'wallet-1',
+      categoryId: SampleDataSeeder.catFoodId,
+      type: 'expense',
+      amountMinor: 200000,
+      note: 'Undoable dinner',
+      occurredAtEpochMs: nowMs,
+      updatedAtEpochMs: nowMs,
+      outboxId: 'o-create',
+    );
+    clock.advance(const Duration(seconds: 10));
+    await db.softDeleteTransactionAtomic(
+      transactionId: 'tx-undo',
+      deletedAtEpochMs: clock.nowUtc().millisecondsSinceEpoch,
+      outboxId: 'o-del',
+    );
+
+    expect(await db.watchActiveTransactions().first, isEmpty);
+    expect(
+      (await db.watchWalletsWithBalance().first).single.currentBalanceMinor,
+      1000000,
+    );
+
+    clock.advance(const Duration(seconds: 3));
+    final restored = await db.restoreTransactionAtomic(
+      transactionId: 'tx-undo',
+      updatedAtEpochMs: clock.nowUtc().millisecondsSinceEpoch,
+      outboxId: 'o-restore',
+    );
+    expect(restored, isTrue);
+
+    final active = await db.watchActiveTransactions().first;
+    expect(active, hasLength(1));
+    expect(active.single.transaction.note, 'Undoable dinner');
+    expect(
+      (await db.watchWalletsWithBalance().first).single.currentBalanceMinor,
+      800000,
+    );
+
+    final outbox = await db.getPendingOutboxItems();
+    expect(outbox.last.operation, 'upsert');
+    expect(outbox.last.payloadJson, contains('"deleted_at_epoch_ms":null'));
+  });
+
+  test('watchWalletsWithBalance computes current-month inflow, outflow, and tx count', () async {
+    final novStart = DateTime.utc(2026, 11, 1).millisecondsSinceEpoch;
+    final decStart = DateTime.utc(2026, 12, 1).millisecondsSinceEpoch;
+    final octDate = DateTime.utc(2026, 10, 20, 12).millisecondsSinceEpoch;
+    final novDate = DateTime.utc(2026, 11, 10, 12).millisecondsSinceEpoch;
+
+    await db.upsertTransactionAtomic(
+      id: 'tx-oct-old',
+      walletId: 'wallet-1',
+      categoryId: SampleDataSeeder.catSalaryId,
+      type: 'income',
+      amountMinor: 500000,
+      note: 'Oct stipend',
+      occurredAtEpochMs: octDate,
+      updatedAtEpochMs: octDate,
+      outboxId: 'o-oct',
+    );
+    await db.upsertTransactionAtomic(
+      id: 'tx-nov-in',
+      walletId: 'wallet-1',
+      categoryId: SampleDataSeeder.catSalaryId,
+      type: 'income',
+      amountMinor: 1200000,
+      note: 'Nov stipend',
+      occurredAtEpochMs: novDate,
+      updatedAtEpochMs: novDate,
+      outboxId: 'o-nov-in',
+    );
+    await db.upsertTransactionAtomic(
+      id: 'tx-nov-out',
+      walletId: 'wallet-1',
+      categoryId: SampleDataSeeder.catFoodId,
+      type: 'expense',
+      amountMinor: 350000,
+      note: 'Nov lunch',
+      occurredAtEpochMs: novDate,
+      updatedAtEpochMs: novDate,
+      outboxId: 'o-nov-out',
+    );
+
+    final rows = await db
+        .watchWalletsWithBalance(
+          monthFromEpochMs: novStart,
+          monthToEpochMs: decStart,
+        )
+        .first;
+    final w = rows.single;
+    expect(w.currentBalanceMinor, 1000000 + 500000 + 1200000 - 350000);
+    expect(w.monthlyInflowMinor, 1200000);
+    expect(w.monthlyOutflowMinor, 350000);
+    expect(w.monthlyTxCount, 2);
+  });
+
+  test('updateCategoryBudget persists updated monthly cap in SQLite', () async {
+    final ok = await db.updateCategoryBudget(
+      categoryId: SampleDataSeeder.catCoffeeId,
+      monthlyBudgetMinor: 1500000,
+      updatedAtEpochMs: clock.nowUtc().millisecondsSinceEpoch,
+    );
+    expect(ok, isTrue);
+
+    final cats = await db.watchCategories().first;
+    final coffee = cats.firstWhere((c) => c.id == SampleDataSeeder.catCoffeeId);
+    expect(coffee.monthlyBudgetMinor, 1500000);
+  });
 }

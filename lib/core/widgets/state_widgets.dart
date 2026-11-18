@@ -40,6 +40,7 @@ class EmptyStateWidget extends StatelessWidget {
     required this.subtitle,
     this.actionLabel,
     this.onAction,
+    this.padding = const EdgeInsets.fromLTRB(24, 24, 24, 96),
   });
 
   final IconData icon;
@@ -47,13 +48,14 @@ class EmptyStateWidget extends StatelessWidget {
   final String subtitle;
   final String? actionLabel;
   final VoidCallback? onAction;
+  final EdgeInsetsGeometry padding;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: padding,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

@@ -51,6 +51,52 @@ final class CurrencyFormatter {
     return formattedValue;
   }
 
+  /// Formats an integer minor-unit amount for prefilling text input fields.
+  static String formatEditableInput(
+    int amountMinor, {
+    String currency = 'VND',
+  }) {
+    final digits = decimalDigitsFor(currency);
+    if (digits == 0) {
+      return amountMinor.toString();
+    }
+    return (amountMinor / _pow10(digits)).toStringAsFixed(digits);
+  }
+
+  /// Formats compact chart axis values (for example `14.5M` or `540K`).
+  static String formatCompactAxis(
+    int amountMinor, {
+    String currency = 'VND',
+  }) {
+    final normalized = currency.toUpperCase();
+    final digits = decimalDigitsFor(normalized);
+    final value = amountMinor / _pow10(digits);
+    final absVal = value.abs();
+    final prefix = value < 0 ? '-' : '';
+    final symbol = normalized == 'VND' ? '' : symbolFor(normalized);
+
+    String compact(double numVal, String suffix) {
+      final rounded = numVal >= 10 || numVal == numVal.roundToDouble()
+          ? numVal.toStringAsFixed(0)
+          : numVal.toStringAsFixed(1);
+      final clean = rounded.endsWith('.0')
+          ? rounded.substring(0, rounded.length - 2)
+          : rounded;
+      return '$prefix$symbol$clean$suffix';
+    }
+
+    if (absVal >= 1000000000) {
+      return compact(absVal / 1000000000, 'B');
+    }
+    if (absVal >= 1000000) {
+      return compact(absVal / 1000000, 'M');
+    }
+    if (absVal >= 1000) {
+      return compact(absVal / 1000, 'K');
+    }
+    return '$prefix$symbol${absVal.round()}';
+  }
+
   /// Parses user-entered currency strings into positive integer minor units.
   /// Returns null when the input is empty, non-numeric, or <= 0.
   static int? parsePositiveMinor(String rawInput, {String currency = 'VND'}) {

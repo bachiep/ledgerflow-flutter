@@ -159,5 +159,23 @@ void main() {
       expect(deleted, isTrue);
       verify(() => txRepo.softDeleteTransaction('t1')).called(1);
     });
+
+    test('restoreTransaction delegates restore to repository', () async {
+      when(() => txRepo.watchTransactions(any()))
+          .thenAnswer((_) => Stream.value([sampleEntry]));
+      when(() => txRepo.restoreTransaction('t1'))
+          .thenAnswer((_) async => const Success(null));
+
+      final cubit = TransactionsCubit(
+        transactionRepository: txRepo,
+        walletRepository: walletRepo,
+        filterCubit: filterCubit,
+      );
+      addTearDown(cubit.close);
+
+      final restored = await cubit.restoreTransaction('t1');
+      expect(restored, isTrue);
+      verify(() => txRepo.restoreTransaction('t1')).called(1);
+    });
   });
 }
