@@ -43,7 +43,7 @@ class CashflowTrendChart extends StatelessWidget {
     return Card(
       key: const Key('cashflow_trend_card'),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -62,9 +62,9 @@ class CashflowTrendChart extends StatelessWidget {
                 _LegendDot(color: colors.expense, label: 'Out'),
               ],
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
             SizedBox(
-              height: 176,
+              height: 128,
               width: double.infinity,
               child: CustomPaint(
                 key: const Key('cashflow_trend_painter'),
@@ -83,9 +83,9 @@ class CashflowTrendChart extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
                 color: colors.surfaceSubtle,
                 borderRadius: BorderRadius.circular(10),

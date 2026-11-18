@@ -6,6 +6,7 @@ import 'package:ledgerflow_flutter/core/utils/currency_formatter.dart';
 import 'package:ledgerflow_flutter/core/widgets/state_widgets.dart';
 import 'package:ledgerflow_flutter/features/wallets/domain/wallet.dart';
 import 'package:ledgerflow_flutter/features/wallets/presentation/cubit/wallets_cubit.dart';
+import 'package:ledgerflow_flutter/features/wallets/presentation/widgets/transfer_modal.dart';
 
 class WalletsPage extends StatelessWidget {
   const WalletsPage({
@@ -177,6 +178,28 @@ class _WalletsLoadedView extends StatelessWidget {
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    key: const Key('quick_transfer_button'),
+                    onPressed: () {
+                      if (wallets.length < 2) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Create at least 2 wallets to transfer funds.',
+                            ),
+                          ),
+                        );
+                        return;
+                      }
+                      TransferModal.show(context, wallets: wallets);
+                    },
+                    icon: const Icon(Icons.swap_horiz, size: 18),
+                    label: const Text('Transfer Funds'),
+                  ),
                 ),
               ],
             ),

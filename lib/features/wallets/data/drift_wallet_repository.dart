@@ -98,4 +98,47 @@ class DriftWalletRepository implements WalletRepository {
       return Err(DatabaseFailure('Failed to save wallet.', cause: error));
     }
   }
+
+  @override
+  Future<Result<void>> transferBetweenWallets({
+    required String sourceWalletId,
+    required String destinationWalletId,
+    required int amountMinor,
+    String note = '',
+  }) async {
+    if (sourceWalletId == destinationWalletId) {
+      return const Err(
+        ValidationFailure('Source and destination wallets must be different.'),
+      );
+    }
+    if (amountMinor <= 0) {
+      return const Err(
+        ValidationFailure('Transfer amount must be greater than 0.'),
+      );
+    }
+
+    try {
+      final now = _clock.nowUtc();
+      await _db.transferAtomic(
+        sourceWalletId: sourceWalletId,
+        destinationWalletId: destinationWalletId,
+        amountMinor: amountMinor,
+        note: note,
+        occurredAtEpochMs: now.millisecondsSinceEpoch,
+        sourceTxId: _uuid.v4(),
+        destinationTxId: _uuid.v4(),
+        sourceOutboxId: _uuid.v4(),
+        destinationOutboxId: _uuid.v4(),
+      );
+      return const Success(null);
+    } on StateError catch (error) {
+      return Err(ValidationFailure(error.message));
+    } on ArgumentError catch (error) {
+      return Err(ValidationFailure(error.message.toString()));
+    } catch (error) {
+      return Err(
+        DatabaseFailure('Failed to complete wallet transfer.', cause: error),
+      );
+    }
+  }
 }

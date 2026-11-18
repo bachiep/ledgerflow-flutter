@@ -10,6 +10,8 @@ IconData mapCategoryIcon(String iconName) {
     'movie' => Icons.movie_outlined,
     'payments' => Icons.payments_outlined,
     'work' => Icons.work_outline,
+    'sync_alt' => Icons.sync_alt_outlined,
+    'swap_horiz' => Icons.swap_horiz_outlined,
     _ => Icons.category_outlined,
   };
 }

@@ -3,8 +3,8 @@
 > An offline-first personal and shared expense tracker built with Flutter, BLoC, Drift (SQLite), transactional outbox synchronization, and Supabase.
 
 [![Flutter CI](https://github.com/bachiep/ledgerflow-flutter/actions/workflows/ci.yml/badge.svg)](https://github.com/bachiep/ledgerflow-flutter/actions/workflows/ci.yml)
-![Version](https://img.shields.io/badge/Version-2.0.0-1E40AF)
-[![Release APK](https://img.shields.io/badge/APK-v2.0.0%20Release-10B981?logo=android&logoColor=white)](https://github.com/bachiep/ledgerflow-flutter/releases/tag/v2.0.0)
+![Version](https://img.shields.io/badge/Version-2.1.0-1E40AF)
+[![Release APK](https://img.shields.io/badge/APK-v2.1.0%20Release-10B981?logo=android&logoColor=white)](https://github.com/bachiep/ledgerflow-flutter/releases/tag/v2.1.0)
 ![Flutter](https://img.shields.io/badge/Flutter-3.41.6-02569B?logo=flutter&logoColor=white)
 ![Dart](https://img.shields.io/badge/Dart-3.11.4-0175C2?logo=dart&logoColor=white)
 ![State Management](https://img.shields.io/badge/State-flutter__bloc-673AB7)
@@ -66,14 +66,14 @@ sequenceDiagram
 
 ## Key Technical Highlights
 
-- **Atomic Transactional Outbox & 5-Second Undo Recovery:** [`AppDatabase.upsertTransactionAtomic`](lib/core/database/app_database.dart), [`softDeleteTransactionAtomic`](lib/core/database/app_database.dart), and [`restoreTransactionAtomic`](lib/core/database/app_database.dart) execute domain mutations and `sync_outbox` appends inside SQLite `transaction(...)` blocks (`PRAGMA foreign_keys = ON`). Deleting from the card menu, swipe gesture, or edit sheet triggers a 5-second `UNDO` SnackBar backed by atomic outbox restoration.
+- **Atomic Transactional Outbox, Wallet Transfers & 5-Second Undo Recovery:** [`AppDatabase.upsertTransactionAtomic`](lib/core/database/app_database.dart), [`transferAtomic`](lib/core/database/app_database.dart), [`softDeleteTransactionAtomic`](lib/core/database/app_database.dart), and [`restoreTransactionAtomic`](lib/core/database/app_database.dart) execute domain mutations and `sync_outbox` appends inside SQLite `transaction(...)` blocks (`PRAGMA foreign_keys = ON`). Wallet-to-wallet transfers validate balance constraints, debit source and credit destination wallets with paired `pending` ledger rows, and enqueue matching outbox mutations atomically. Deleting from the card menu, swipe gesture, or edit sheet triggers a 5-second `UNDO` SnackBar backed by atomic outbox restoration.
 - **Swiss Fintech Theme & Responsive Zero-Overlap Layout:** [`AppTheme`](lib/core/theme/app_theme.dart) pairs Deep Trust Blue (`#1E40AF`), Emerald (`#059669`), and Crimson (`#DC2626`) across crisp `1px`-bordered Light (`#F8FAFC`) and OLED Dark (`#090D16`) surfaces, `FontFeature.tabularFigures()` column alignment, and `96dp` bottom scroll clearance verified across `320px` and `393px` viewports.
-- **Date-Grouped Ledger & Tap-to-Edit:** [`LedgerPage`](lib/features/transactions/presentation/pages/ledger_page.dart) groups entries chronologically (`Today`, `Yesterday`, formatted date) with daily net cashflow subtotals, debounced search (`restartable()` 300ms in [`TransactionSearchBloc`](lib/features/transactions/presentation/bloc/transaction_search_bloc.dart)), and prefilled [`TransactionFormSheet`](lib/features/transactions/presentation/widgets/transaction_form_sheet.dart) editing.
+- **Date-Grouped Ledger, Active Wallet Filter Banner & Tap-to-Edit:** [`LedgerPage`](lib/features/transactions/presentation/pages/ledger_page.dart) groups entries chronologically (`Today`, `Yesterday`, formatted date) with daily net cashflow subtotals, debounced search (`restartable()` 300ms in [`TransactionSearchBloc`](lib/features/transactions/presentation/bloc/transaction_search_bloc.dart)), an explicit top `"Showing: [Wallet Name]"` filter banner with 1-tap `Show All` reset when navigating from Wallets, and prefilled [`TransactionFormSheet`](lib/features/transactions/presentation/widgets/transaction_form_sheet.dart) editing.
 - **6-Month SQL Trend, Interactive Budget Editor & Offline CSV Export:**
-  - [`AppDatabase.watchMonthlyAnalyticsSql`](lib/core/database/app_database.dart) computes monthly KPIs, category breakdowns, and trailing 6-month `strftime('%Y-%m', ...)` income/expense series rendered via [`CashflowTrendChart`](lib/features/analytics/presentation/widgets/cashflow_trend_chart.dart) (`CustomPainter`) and [`CashflowDonutChart`](lib/features/analytics/presentation/widgets/cashflow_donut_chart.dart).
+  - [`AppDatabase.watchMonthlyAnalyticsSql`](lib/core/database/app_database.dart) computes monthly KPIs, category breakdowns, and trailing 6-month `strftime('%Y-%m', ...)` income/expense series rendered via [`CashflowTrendChart`](lib/features/analytics/presentation/widgets/cashflow_trend_chart.dart) (`CustomPainter`) and [`CashflowDonutChart`](lib/features/analytics/presentation/widgets/cashflow_donut_chart.dart), tuned so both trend bars and budget progress bars fit cleanly on `393x852` viewports.
   - [`BudgetEditorSheet`](lib/features/analytics/presentation/widgets/budget_editor_sheet.dart) persists category budget limits directly to SQLite and refreshes `Near limit` (`>= 80%`) / `Over budget` (`>= 100%`) badges immediately.
   - [`CsvStatementExporter`](lib/features/analytics/domain/csv_statement_exporter.dart) and [`CsvExportSheet`](lib/features/analytics/presentation/widgets/csv_export_sheet.dart) generate RFC-4180 monthly CSV statements with spreadsheet formula-prefix neutralization (`=`, `+`, `-`, `@`), line-by-line monospace preview, and clipboard export.
-- **Enriched Wallets & Concurrency-Safe Sync:** [`WalletsPage`](lib/features/wallets/presentation/pages/wallets_page.dart) displays SQL-computed monthly inflow, outflow, net delta, transaction count, and Personal/Shared badges with 1-tap filtered Ledger navigation; [`SyncBloc`](lib/features/sync/presentation/bloc/sync_bloc.dart) uses `droppable()` alongside [`SyncOutboxInspectorSheet`](lib/features/sync/presentation/widgets/sync_outbox_inspector_sheet.dart) and LWW tombstone merging.
+- **Enriched Wallets, Quick Transfer & Concurrency-Safe Sync:** [`WalletsPage`](lib/features/wallets/presentation/pages/wallets_page.dart) displays SQL-computed monthly inflow, outflow, net delta, transaction count, Personal/Shared badges, a [`TransferModal`](lib/features/wallets/presentation/widgets/transfer_modal.dart) action for atomic wallet transfers, and 1-tap filtered Ledger navigation; [`SyncBloc`](lib/features/sync/presentation/bloc/sync_bloc.dart) uses `droppable()` alongside [`SyncOutboxInspectorSheet`](lib/features/sync/presentation/widgets/sync_outbox_inspector_sheet.dart) and LWW tombstone merging.
 
 ---
 
@@ -111,8 +111,8 @@ flutter run
 ```
 On the **Welcome** screen, tap **Continue as Guest (30-Day Sample Data)**. This runs entirely offline using local SQLite + [`SimulatedRemoteSyncDataSource`](lib/features/sync/data/simulated_remote_sync_data_source.dart):
 1. Explore date-grouped transactions on **Ledger**, tap any row to edit, or delete and tap **UNDO** within 5 seconds to restore atomically.
-2. Open **Analytics** to inspect the 6-Month Cashflow Trend bar chart, tap any category row to adjust its monthly budget cap, or tap **Export CSV** for formula-safe RFC-4180 statement preview and clipboard copy.
-3. Open **Wallets** to review monthly inflow, outflow, net delta, and transaction counts per personal or shared wallet, then tap a card to jump directly to its filtered ledger.
+2. Open **Analytics** to inspect the 6-Month Cashflow Trend bar chart and category budget progress bars side-by-side, tap any category row to adjust its monthly budget cap, or tap **Export CSV** for formula-safe RFC-4180 statement preview and clipboard copy.
+3. Open **Wallets** to review monthly inflow, outflow, net delta, and transaction counts per personal or shared wallet, tap **Transfer Funds** to execute an atomic wallet-to-wallet balance transfer with overdraft validation, or tap a wallet card to jump directly to its filtered ledger with a 1-tap **Show All** banner.
 4. Tap the cloud status icon in the top bar to open **Sync Outbox Inspector**, toggle **Simulate Offline**, and watch mutations transition `PENDING -> SYNCED`.
 
 ### 3. (Optional) Connect Your Own Supabase Project
@@ -125,7 +125,7 @@ flutter run \
 ```
 
 ### 4. Android Release APK
-- Prebuilt signed release APK (`v2.0.0`, `59.6 MB`) is attached on the [GitHub Releases](https://github.com/bachiep/ledgerflow-flutter/releases/tag/v2.0.0) page, or build locally via:
+- Prebuilt signed release APK is attached on the [GitHub Releases](https://github.com/bachiep/ledgerflow-flutter/releases) page, or build locally via:
 ```bash
 flutter build apk --release
 ```
@@ -136,16 +136,16 @@ flutter build apk --release
 
 ### Mobile UI Preview (`393x852 @2x`)
 
-| Date-Grouped Ledger | 6-Month Trend & Budgets | Sync Outbox Inspector | Wallets (OLED Dark) | Offline CSV Statement |
+| Date-Grouped Ledger | 6-Month Trend & Budgets | Sync Outbox Inspector | Wallets & Transfer (OLED Dark) | Offline CSV Statement |
 | :---: | :---: | :---: | :---: | :---: |
 | <img src="docs/screenshots/01-ledger-transactions.png" width="175" alt="Ledger Transactions" /> | <img src="docs/screenshots/02-analytics-cashflow.png" width="175" alt="Analytics Cashflow" /> | <img src="docs/screenshots/03-sync-outbox-inspector.png" width="175" alt="Sync Outbox Inspector" /> | <img src="docs/screenshots/04-wallets-dark-mode.png" width="175" alt="Wallets Dark Mode" /> | <img src="docs/screenshots/05-csv-budget-sheet.png" width="175" alt="Offline CSV Statement Export" /> |
-| Chronological day sections with net subtotals, tap-to-edit & `SYNCED` pills | 6-month SQL trend chart, donut breakdown & interactive budget alerts | In-app **Simulate Offline** toggle and live `sync_outbox` `PENDING` queue | Personal & Shared badges with monthly inflow, outflow, net delta & tx counts | RFC-4180 CSV preview with formula-injection protection & clipboard copy |
+| Chronological day sections with net subtotals, active wallet filter banner & `SYNCED` pills | 6-month SQL trend chart & category budget progress bars visible on `393x852` | In-app **Simulate Offline** toggle and live `sync_outbox` `PENDING` queue | Personal & Shared badges, monthly inflow/outflow/net delta & **Transfer Funds** modal | RFC-4180 CSV preview with formula-injection protection & clipboard copy |
 
 ---
 
 ## Testing & Verification
 
-Run static analysis and the complete automated test suite (`56` tests across `13` test files — `55` active unit, SQLite, BLoC, and widget tests plus `1` `--dart-define=WRITE_SCREENSHOTS=true` guarded screenshot test):
+Run static analysis and the complete automated test suite (`62` tests across `13` test files — `61` active unit, SQLite, BLoC, and widget tests plus `1` `--dart-define=WRITE_SCREENSHOTS=true` guarded screenshot test):
 
 ```bash
 flutter analyze --no-pub
@@ -161,10 +161,10 @@ flutter test --no-pub --concurrency=1 --timeout 30s
 
 ### Verified Test Coverage Summary
 - **Core Foundations (`11` tests):** `AppConfig` flag validation (`1`), `Result<T>` / `CurrencyFormatter` minor-unit math, editable input & compact axis formatting / `FixedClock` (`6`), shared `Loading`/`Empty`/`Error` state widgets (`2`), and `ThemeCubit` (`2`).
-- **SQLite Outbox, Restore & Seeder (`10` tests):** Atomic `transactions` + `sync_outbox` writes, foreign-key rollback, balance recalculation on edit/soft-delete/`restoreTransactionAtomic`, wallet monthly inflow/outflow/tx-count SQL queries, budget persistence, retry error retention (`attempts` & `last_error`), and idempotent 30-day seeding.
+- **SQLite Outbox, Restore, Transfer & Seeder (`14` tests):** Atomic `transactions` + `sync_outbox` writes, foreign-key rollback, balance recalculation on edit/soft-delete/`restoreTransactionAtomic`, atomic `transferAtomic` wallet-to-wallet transfers (happy path, insufficient balance rejection, atomic rollback on error, outbox sync processing), wallet monthly inflow/outflow/tx-count SQL queries, budget persistence, retry error retention (`attempts` & `last_error`), and idempotent 30-day seeding.
 - **Transactions, Date Grouping, Edit & Undo (`13` tests):** `TransactionSearchBloc` `restartable()` 300ms debounce, `TransactionFilterCubit` combinations (`3`), `TransactionsCubit` reactive streams, delete & restore (`5`), `LedgerPage` empty-to-created, date-grouped daily sections, tap-to-edit, 5-second `UNDO` SnackBar recovery, and `320px`/`393px` zero-overflow checks across all 3 tabs (`5`).
 - **Analytics, 6M Trend, Budget Editor & CSV Export (`7` tests):** Monthly & 6-month trailing SQL aggregations, UTC month boundaries, `CsvStatementExporter` RFC-4180 quoting & formula-injection escaping (`=`, `+`, `-`, `@`), `AnalyticsEmpty` -> `AnalyticsLoaded` month navigation, `BudgetEditorSheet` live threshold transitions, and `CsvExportSheet` clipboard copy.
-- **Sync, Outbox Inspector & Wallets (`13` tests):** `SyncBloc` `droppable()` duplicate prevention, push error retention + retry, LWW delta conflict resolution, 1-tap Guest onboarding (`6`), `SyncInspectorCubit`, `Simulate Offline -> PENDING -> SYNCED` flow, shared group wallet creation, cross-device tombstone propagation, and `320px` keyboard-inset modal layout check (`7`).
+- **Sync, Outbox Inspector & Wallets (`15` tests):** `SyncBloc` `droppable()` duplicate prevention, push error retention + retry, LWW delta conflict resolution, 1-tap Guest onboarding (`6`), `SyncInspectorCubit`, `Simulate Offline -> PENDING -> SYNCED` flow, shared group wallet creation, `TransferModal` overdraft validation & atomic transfer execution, `LedgerPage` active wallet filter banner & 1-tap `Show All` reset, cross-device tombstone propagation, and `320px` keyboard-inset modal layout check (`9`).
 - **App Shell Smoke & Screenshot Guard (`2` tests):** `LedgerFlowApp` 3-tab navigation shell + theme toggle (`1`) and `WRITE_SCREENSHOTS` guarded screenshot render test (`1`).
 
 ---
@@ -191,8 +191,8 @@ lib/
     ├── analytics/          # 6M SQL trend & donut charts, BudgetEditorSheet, CsvStatementExporter
     ├── auth/               # Guest offline mode & optional Supabase email/password auth
     ├── sync/               # SyncBloc (droppable), SyncOutboxInspectorSheet, LWW sync engine
-    ├── transactions/       # Date-grouped Ledger, TransactionsCubit, SearchBloc, FormSheet
-    └── wallets/            # Personal & shared group wallets with monthly inflow/outflow/net delta
+    ├── transactions/       # Date-grouped Ledger, active wallet filter banner, TransactionsCubit, SearchBloc, FormSheet
+    └── wallets/            # Personal & shared group wallets, atomic TransferModal, monthly inflow/outflow/net delta
 supabase/
 └── schema.sql              # Postgres schema + RLS policies (auth.uid() = user_id)
 test/                       # Unit, Drift DB, BLoC/Cubit, CSV, and Widget integration tests (13 files)

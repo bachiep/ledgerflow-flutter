@@ -338,4 +338,165 @@ void main() {
     final coffee = cats.firstWhere((c) => c.id == SampleDataSeeder.catCoffeeId);
     expect(coffee.monthlyBudgetMinor, 1500000);
   });
+
+  test('transferAtomic debits source wallet, credits destination wallet, and enqueues sync outbox mutations', () async {
+    final nowMs = clock.nowUtc().millisecondsSinceEpoch;
+    await db.upsertWalletAtomic(
+      id: 'wallet-dest',
+      name: 'Savings Vault',
+      currency: 'VND',
+      initialBalanceMinor: 500000,
+      isShared: false,
+      updatedAtEpochMs: nowMs,
+      outboxId: 'outbox-w-dest',
+    );
+    final pendingInit = await db.getPendingOutboxItems();
+    await db.markOutboxProcessed(items: pendingInit, processedAtEpochMs: nowMs);
+
+    // Initial balances
+    expect(await db.getWalletBalance('wallet-1'), 1000000);
+    expect(await db.getWalletBalance('wallet-dest'), 500000);
+
+    // Transfer 300,000 VND
+    await db.transferAtomic(
+      sourceWalletId: 'wallet-1',
+      destinationWalletId: 'wallet-dest',
+      amountMinor: 300000,
+      note: 'Emergency savings',
+      occurredAtEpochMs: nowMs,
+      sourceTxId: 'tx-xfer-src',
+      destinationTxId: 'tx-xfer-dst',
+      sourceOutboxId: 'outbox-xfer-src',
+      destinationOutboxId: 'outbox-xfer-dst',
+    );
+
+    // Balances reflect transfer
+    expect(await db.getWalletBalance('wallet-1'), 700000);
+    expect(await db.getWalletBalance('wallet-dest'), 800000);
+
+    // Transactions created
+    final txs = await db.watchActiveTransactions().first;
+    expect(txs, hasLength(2));
+    final srcTx = txs.firstWhere((t) => t.transaction.id == 'tx-xfer-src');
+    final dstTx = txs.firstWhere((t) => t.transaction.id == 'tx-xfer-dst');
+
+    expect(srcTx.transaction.type, 'expense');
+    expect(srcTx.transaction.amountMinor, 300000);
+    expect(srcTx.transaction.note, contains('Transfer to Savings Vault'));
+    expect(srcTx.transaction.syncStatus, 'pending');
+
+    expect(dstTx.transaction.type, 'income');
+    expect(dstTx.transaction.amountMinor, 300000);
+    expect(dstTx.transaction.note, contains('Transfer from Main Wallet'));
+    expect(dstTx.transaction.syncStatus, 'pending');
+
+    // Outbox entries enqueued
+    final outbox = await db.getPendingOutboxItems();
+    expect(outbox, hasLength(2));
+    expect(
+      outbox.map((o) => o.entityId),
+      containsAll(['tx-xfer-src', 'tx-xfer-dst']),
+    );
+  });
+
+  test('transferAtomic throws and does not debit when source wallet has insufficient balance', () async {
+    final nowMs = clock.nowUtc().millisecondsSinceEpoch;
+    await db.upsertWalletAtomic(
+      id: 'wallet-target',
+      name: 'Vacation Pool',
+      currency: 'VND',
+      initialBalanceMinor: 200000,
+      isShared: true,
+      updatedAtEpochMs: nowMs,
+      outboxId: 'outbox-w-target',
+    );
+    final pendingInit = await db.getPendingOutboxItems();
+    await db.markOutboxProcessed(items: pendingInit, processedAtEpochMs: nowMs);
+
+    expect(await db.getWalletBalance('wallet-1'), 1000000);
+
+    // Attempt to transfer 2,500,000 VND (> 1,000,000)
+    await expectLater(
+      () => db.transferAtomic(
+        sourceWalletId: 'wallet-1',
+        destinationWalletId: 'wallet-target',
+        amountMinor: 2500000,
+        note: 'Overdraft attempt',
+        occurredAtEpochMs: nowMs,
+        sourceTxId: 'tx-xfer-fail-src',
+        destinationTxId: 'tx-xfer-fail-dst',
+        sourceOutboxId: 'o-fail-src',
+        destinationOutboxId: 'o-fail-dst',
+      ),
+      throwsA(isA<StateError>()),
+    );
+
+    // Balances and outbox untouched
+    expect(await db.getWalletBalance('wallet-1'), 1000000);
+    expect(await db.getWalletBalance('wallet-target'), 200000);
+    expect(await db.getPendingOutboxItems(), isEmpty);
+  });
+
+  test('transferAtomic rolls back atomically when error occurs during transaction', () async {
+    final nowMs = clock.nowUtc().millisecondsSinceEpoch;
+    expect(await db.getWalletBalance('wallet-1'), 1000000);
+
+    // Destination wallet does not exist -> fails within transaction
+    await expectLater(
+      () => db.transferAtomic(
+        sourceWalletId: 'wallet-1',
+        destinationWalletId: 'non-existent-wallet-id',
+        amountMinor: 100000,
+        note: 'Rollback test',
+        occurredAtEpochMs: nowMs,
+        sourceTxId: 'tx-rollback-src',
+        destinationTxId: 'tx-rollback-dst',
+        sourceOutboxId: 'o-rb-src',
+        destinationOutboxId: 'o-rb-dst',
+      ),
+      throwsA(isA<StateError>()),
+    );
+
+    // Full atomic rollback verification
+    expect(await db.getWalletBalance('wallet-1'), 1000000);
+    expect(await db.watchActiveTransactions().first, isEmpty);
+    expect(await db.getPendingOutboxItems(), isEmpty);
+  });
+
+  test('transferAtomic mutations are processed and marked synced via markOutboxProcessed', () async {
+    final nowMs = clock.nowUtc().millisecondsSinceEpoch;
+    await db.upsertWalletAtomic(
+      id: 'wallet-b',
+      name: 'Secondary Wallet',
+      currency: 'VND',
+      initialBalanceMinor: 400000,
+      isShared: false,
+      updatedAtEpochMs: nowMs,
+      outboxId: 'outbox-wb',
+    );
+    final pendingInit = await db.getPendingOutboxItems();
+    await db.markOutboxProcessed(items: pendingInit, processedAtEpochMs: nowMs);
+
+    await db.transferAtomic(
+      sourceWalletId: 'wallet-1',
+      destinationWalletId: 'wallet-b',
+      amountMinor: 200000,
+      note: 'Rebalance test',
+      occurredAtEpochMs: nowMs,
+      sourceTxId: 'tx-sync-src',
+      destinationTxId: 'tx-sync-dst',
+      sourceOutboxId: 'o-sync-src',
+      destinationOutboxId: 'o-sync-dst',
+    );
+
+    expect(await db.watchPendingOutboxCount().first, 2);
+
+    final pending = await db.getPendingOutboxItems();
+    await db.markOutboxProcessed(items: pending, processedAtEpochMs: nowMs + 1000);
+
+    expect(await db.watchPendingOutboxCount().first, 0);
+
+    final txs = await db.watchActiveTransactions().first;
+    expect(txs.every((t) => t.transaction.syncStatus == 'synced'), isTrue);
+  });
 }

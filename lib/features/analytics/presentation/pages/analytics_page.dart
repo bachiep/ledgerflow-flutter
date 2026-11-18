@@ -75,6 +75,8 @@ class AnalyticsPage extends StatelessWidget {
                     onAction: onNavigateToLedger,
                   ),
                 AnalyticsLoaded(:final snapshot) => ListView(
+                    key: const Key('analytics_list_view'),
+                    physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
                     children: [
                       _CashflowKpiRow(
@@ -82,20 +84,20 @@ class AnalyticsPage extends StatelessWidget {
                         onExportCsv: () => _openCsvExport(context, state.month),
                       ),
                       if (snapshot.sixMonthTrend.isNotEmpty) ...[
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 10),
                         CashflowTrendChart(points: snapshot.sixMonthTrend),
                       ],
                       if (snapshot.categorySpends.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        CashflowDonutChart(
-                          categorySpends: snapshot.categorySpends,
-                          totalExpenseMinor: snapshot.summary.totalExpenseMinor,
-                        ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 10),
                         _BudgetAlertList(
                           spends: snapshot.categorySpends,
                           onEditBudget: (spend) =>
                               _openBudgetEditor(context, spend),
+                        ),
+                        const SizedBox(height: 10),
+                        CashflowDonutChart(
+                          categorySpends: snapshot.categorySpends,
+                          totalExpenseMinor: snapshot.summary.totalExpenseMinor,
                         ),
                       ],
                     ],
@@ -124,7 +126,7 @@ class _MonthSelectorBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 2),
       child: Row(
         children: [
           IconButton(
@@ -171,7 +173,7 @@ class _CashflowKpiRow extends StatelessWidget {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -332,8 +334,9 @@ class _BudgetAlertList extends StatelessWidget {
     final colors = context.ledgerColors;
 
     return Card(
+      key: const Key('budget_alerts_card'),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -356,14 +359,14 @@ class _BudgetAlertList extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             for (var i = 0; i < spends.length; i++) ...[
               _BudgetCategoryRow(
                 spend: spends[i],
                 colors: colors,
                 onEdit: () => onEditBudget(spends[i]),
               ),
-              if (i < spends.length - 1) const SizedBox(height: 12),
+              if (i < spends.length - 1) const SizedBox(height: 8),
             ],
           ],
         ),

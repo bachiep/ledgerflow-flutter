@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:ledgerflow_flutter/core/result/result.dart';
 import 'package:ledgerflow_flutter/features/wallets/domain/wallet.dart';
 import 'package:ledgerflow_flutter/features/wallets/domain/wallet_repository.dart';
 
@@ -79,6 +80,20 @@ class WalletsCubit extends Cubit<WalletsState> {
       isShared: isShared,
     );
     return result.isSuccess;
+  }
+
+  Future<Result<void>> transferBetweenWallets({
+    required String sourceWalletId,
+    required String destinationWalletId,
+    required int amountMinor,
+    String note = '',
+  }) async {
+    return _repository.transferBetweenWallets(
+      sourceWalletId: sourceWalletId,
+      destinationWalletId: destinationWalletId,
+      amountMinor: amountMinor,
+      note: note,
+    );
   }
 
   @override

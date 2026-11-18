@@ -348,6 +348,191 @@ class AppDatabase extends _$AppDatabase {
     return affected > 0;
   }
 
+  static const String transferCategoryId =
+      '22222222-2222-4222-8222-222222222209';
+
+  /// Computes the net current balance in minor units for a specific wallet in SQLite.
+  Future<int> getWalletBalance(String walletId) async {
+    final row = await customSelect(
+      '''
+      SELECT
+        w.initial_balance_minor + COALESCE(SUM(
+          CASE
+            WHEN t.deleted_at_epoch_ms IS NULL AND t.type = 'income' THEN t.amount_minor
+            WHEN t.deleted_at_epoch_ms IS NULL AND t.type = 'expense' THEN -t.amount_minor
+            ELSE 0
+          END
+        ), 0) AS balance
+      FROM wallets w
+      LEFT JOIN transactions t ON t.wallet_id = w.id
+      WHERE w.id = ? AND w.deleted_at_epoch_ms IS NULL
+      GROUP BY w.id
+      ''',
+      variables: [Variable.withString(walletId)],
+      readsFrom: {wallets, transactions},
+    ).getSingleOrNull();
+    return row?.read<int>('balance') ?? 0;
+  }
+
+  /// Atomically executes a wallet-to-wallet transfer within a single Drift SQLite transaction:
+  /// 1. Validates that source != dest and amountMinor > 0.
+  /// 2. Ensures both wallets exist and calculates current source balance to prevent overdraft.
+  /// 3. Debits source wallet by `amountMinor` (type: expense, sync_status: pending).
+  /// 4. Credits destination wallet by `amountMinor` (type: income, sync_status: pending).
+  /// 5. Updates wallets updated_at timestamps.
+  /// 6. Enqueues matching transactional sync_outbox rows for both mutations.
+  Future<void> transferAtomic({
+    required String sourceWalletId,
+    required String destinationWalletId,
+    required int amountMinor,
+    required String note,
+    required int occurredAtEpochMs,
+    required String sourceTxId,
+    required String destinationTxId,
+    required String sourceOutboxId,
+    required String destinationOutboxId,
+  }) {
+    if (sourceWalletId == destinationWalletId) {
+      throw ArgumentError('Source and destination wallets must be different.');
+    }
+    if (amountMinor <= 0) {
+      throw ArgumentError('Transfer amount must be greater than 0.');
+    }
+
+    return transaction(() async {
+      final sourceWallet = await (select(wallets)
+            ..where((w) => w.id.equals(sourceWalletId)))
+          .getSingleOrNull();
+      if (sourceWallet == null || sourceWallet.deletedAtEpochMs != null) {
+        throw StateError('Source wallet not found or deleted.');
+      }
+
+      final destinationWallet = await (select(wallets)
+            ..where((w) => w.id.equals(destinationWalletId)))
+          .getSingleOrNull();
+      if (destinationWallet == null || destinationWallet.deletedAtEpochMs != null) {
+        throw StateError('Destination wallet not found or deleted.');
+      }
+
+      final currentBalance = await getWalletBalance(sourceWalletId);
+      if (currentBalance < amountMinor) {
+        throw StateError(
+          'Insufficient balance in ${sourceWallet.name} ($currentBalance < $amountMinor).',
+        );
+      }
+
+      await into(categories).insert(
+        CategoriesCompanion.insert(
+          id: transferCategoryId,
+          name: 'Wallet Transfer',
+          type: 'expense',
+          iconName: 'sync_alt',
+          colorHex: 0xFF6366F1,
+          monthlyBudgetMinor: const Value(0),
+          updatedAtEpochMs: occurredAtEpochMs,
+        ),
+        mode: InsertMode.insertOrIgnore,
+      );
+
+      final cleanNote = note.trim();
+      final sourceNote = cleanNote.isNotEmpty
+          ? 'Transfer to ${destinationWallet.name}: $cleanNote'
+          : 'Transfer to ${destinationWallet.name}';
+      final destNote = cleanNote.isNotEmpty
+          ? 'Transfer from ${sourceWallet.name}: $cleanNote'
+          : 'Transfer from ${sourceWallet.name}';
+
+      // Debit source wallet
+      await into(transactions).insert(
+        TransactionsCompanion.insert(
+          id: sourceTxId,
+          walletId: sourceWalletId,
+          categoryId: transferCategoryId,
+          type: 'expense',
+          amountMinor: amountMinor,
+          note: Value(sourceNote),
+          occurredAtEpochMs: occurredAtEpochMs,
+          updatedAtEpochMs: occurredAtEpochMs,
+          deletedAtEpochMs: const Value(null),
+          syncStatus: const Value('pending'),
+        ),
+      );
+
+      // Credit destination wallet
+      await into(transactions).insert(
+        TransactionsCompanion.insert(
+          id: destinationTxId,
+          walletId: destinationWalletId,
+          categoryId: transferCategoryId,
+          type: 'income',
+          amountMinor: amountMinor,
+          note: Value(destNote),
+          occurredAtEpochMs: occurredAtEpochMs,
+          updatedAtEpochMs: occurredAtEpochMs,
+          deletedAtEpochMs: const Value(null),
+          syncStatus: const Value('pending'),
+        ),
+      );
+
+      // Touch wallets
+      await (update(wallets)
+            ..where((w) => w.id.isIn([sourceWalletId, destinationWalletId])))
+          .write(
+        WalletsCompanion(
+          updatedAtEpochMs: Value(occurredAtEpochMs),
+          syncStatus: const Value('pending'),
+        ),
+      );
+
+      // Outbox entries
+      final sourcePayload = jsonEncode({
+        'id': sourceTxId,
+        'wallet_id': sourceWalletId,
+        'category_id': transferCategoryId,
+        'type': 'expense',
+        'amount_minor': amountMinor,
+        'note': sourceNote,
+        'occurred_at_epoch_ms': occurredAtEpochMs,
+        'updated_at_epoch_ms': occurredAtEpochMs,
+        'deleted_at_epoch_ms': null,
+      });
+
+      final destPayload = jsonEncode({
+        'id': destinationTxId,
+        'wallet_id': destinationWalletId,
+        'category_id': transferCategoryId,
+        'type': 'income',
+        'amount_minor': amountMinor,
+        'note': destNote,
+        'occurred_at_epoch_ms': occurredAtEpochMs,
+        'updated_at_epoch_ms': occurredAtEpochMs,
+        'deleted_at_epoch_ms': null,
+      });
+
+      await into(syncOutbox).insert(
+        SyncOutboxCompanion.insert(
+          id: sourceOutboxId,
+          entityType: 'transaction',
+          entityId: sourceTxId,
+          operation: 'upsert',
+          payloadJson: sourcePayload,
+          createdAtEpochMs: occurredAtEpochMs,
+        ),
+      );
+
+      await into(syncOutbox).insert(
+        SyncOutboxCompanion.insert(
+          id: destinationOutboxId,
+          entityType: 'transaction',
+          entityId: destinationTxId,
+          operation: 'upsert',
+          payloadJson: destPayload,
+          createdAtEpochMs: occurredAtEpochMs,
+        ),
+      );
+    });
+  }
+
   Stream<List<TransactionJoinedRow>> watchActiveTransactions({
     String? walletId,
     String? categoryId,

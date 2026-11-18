@@ -425,15 +425,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('6-Month Cashflow Trend'), findsOneWidget);
-    expect(find.text('Expense Breakdown'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('Category Budgets & Alerts'),
-      200,
-    );
-    await tester.pumpAndSettle();
     expect(find.text('Category Budgets & Alerts'), findsOneWidget);
     expect(find.text('Near limit'), findsOneWidget);
     expect(find.text('Over budget'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Expense Breakdown'),
+      200,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Expense Breakdown'), findsOneWidget);
   });
 
   testWidgets(
