@@ -4,7 +4,7 @@
 
 [![Flutter CI](https://github.com/bachiep/ledgerflow-flutter/actions/workflows/ci.yml/badge.svg)](https://github.com/bachiep/ledgerflow-flutter/actions/workflows/ci.yml)
 ![Version](https://img.shields.io/badge/Version-2.0.0-1E40AF)
-[![Release APK](https://img.shields.io/badge/APK-v1.0.0%20Release-10B981?logo=android&logoColor=white)](https://github.com/bachiep/ledgerflow-flutter/releases/tag/v1.0.0)
+[![Release APK](https://img.shields.io/badge/APK-v2.0.0%20Release-10B981?logo=android&logoColor=white)](https://github.com/bachiep/ledgerflow-flutter/releases/tag/v2.0.0)
 ![Flutter](https://img.shields.io/badge/Flutter-3.41.6-02569B?logo=flutter&logoColor=white)
 ![Dart](https://img.shields.io/badge/Dart-3.11.4-0175C2?logo=dart&logoColor=white)
 ![State Management](https://img.shields.io/badge/State-flutter__bloc-673AB7)
@@ -125,7 +125,7 @@ flutter run \
 ```
 
 ### 4. Android Release APK
-- Prebuilt signed release APK (`v1.0.0`, `59.3 MB`) is attached on the [GitHub Releases](https://github.com/bachiep/ledgerflow-flutter/releases) page, or build locally via:
+- Prebuilt signed release APK (`v2.0.0`, `59.6 MB`) is attached on the [GitHub Releases](https://github.com/bachiep/ledgerflow-flutter/releases/tag/v2.0.0) page, or build locally via:
 ```bash
 flutter build apk --release
 ```
