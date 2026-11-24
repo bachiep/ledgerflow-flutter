@@ -3,6 +3,7 @@
 > An offline-first personal and shared expense tracker built with Flutter, BLoC, Drift (SQLite), transactional outbox synchronization, and Supabase.
 
 [![Flutter CI](https://github.com/bachiep/ledgerflow-flutter/actions/workflows/ci.yml/badge.svg)](https://github.com/bachiep/ledgerflow-flutter/actions/workflows/ci.yml)
+[![Live Web Demo](https://img.shields.io/badge/Demo-Try%20Live%20Web%20App-0EA5E9?logo=googlechrome&logoColor=white)](https://bachiep.github.io/ledgerflow-flutter/)
 ![Version](https://img.shields.io/badge/Version-2.1.0-1E40AF)
 [![Release APK](https://img.shields.io/badge/APK-v2.1.0%20Release-10B981?logo=android&logoColor=white)](https://github.com/bachiep/ledgerflow-flutter/releases/tag/v2.1.0)
 ![Flutter](https://img.shields.io/badge/Flutter-3.41.6-02569B?logo=flutter&logoColor=white)
@@ -16,6 +17,8 @@
 ## Architecture Overview
 
 LedgerFlow uses **SQLite (`Drift`) as the single source of truth** so every screen updates reactively in under 16ms whether the device is online, in an elevator, or in airplane mode. Every create, edit, soft-delete, or undo restore writes both the domain table (`wallets` / `transactions`) and an immutable mutation entry into `sync_outbox` inside a **single atomic SQLite transaction**, preventing lost writes across app crashes or flaky networks.
+
+- **Try Live in Browser (WebAssembly SQLite):** [Open LedgerFlow Web Demo (`bachiep.github.io/ledgerflow-flutter`)](https://bachiep.github.io/ledgerflow-flutter/) — tap **Continue as Guest (Offline)** to test atomic wallet transfers, 6M SQL charts, budget alerts, and CSV export directly in the browser via `sqlite3.wasm` + IndexedDB.
 
 ```mermaid
 flowchart LR
