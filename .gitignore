@@ -37,6 +37,7 @@ key.properties
 *.db-wal
 *.sqlite
 *.sqlite3
+web/sqlite3.wasm
 
 # Flutter / Dart / Pub related
 **/doc/api/
